@@ -8,6 +8,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 /* Data Containers */
 const visitedLayer = L.layerGroup().addTo(map);
 const proposedLayer = L.layerGroup().addTo(map);
+const gridLayer = L.layerGroup().addTo(map);
 let LAT_STEP, LON_STEP, originLat, originLon;
 let visitedSet = new Set();
 let baseSquare = null;
@@ -83,7 +84,11 @@ function loadKml(filename){
           allPolygons.push({coords:latlon});
 
           if(isUbersquadrat){
-            candidates.push({name:l.feature.properties.name, coords:latlon});
+            candidates.push({
+              name: l.feature.properties.name,
+              coords: latlon,
+              size: parseInt(l.feature.properties.size) || 16
+            });
           } else {
             // Only add non-ubersquadrat polygons to features for step calculation
             features.push({coords:latlon});
@@ -156,42 +161,31 @@ function loadKml(filename){
 
     console.log('Ubersquadrat has', allLats.length, 'unique latitudes and', allLons.length, 'unique longitudes');
 
-    // Calculate grid steps from the SMALL VISITED SQUARES (not ubersquadrat)
-    // The ubersquadrat has holes/gaps, so we can't use its vertices directly
-    console.log('Calculating grid steps from', window.actualSquareCorners?.length || 0, 'small squares...');
+    // Calculate grid steps from ubersquadrat size attribute
+    // The ubersquadrat KML contains a 'size' property (e.g., 16 for a 16x16 grid)
+    const uberSize = candidates[0].size;
+    console.log('Ubersquadrat size:', uberSize, 'x', uberSize, 'squadrats');
 
-    if (!window.actualSquareCorners || window.actualSquareCorners.length === 0) {
-      alert('No small squares found to calculate grid steps!');
-      return;
-    }
+    // Calculate ubersquadrat bounds
+    const lats = overCoords.map(c=>c[0]);
+    const lons = overCoords.map(c=>c[1]);
+    const uberMinLat = Math.min(...lats);
+    const uberMaxLat = Math.max(...lats);
+    const uberMinLon = Math.min(...lons);
+    const uberMaxLon = Math.max(...lons);
 
-    // Get sizes from actual small squares
-    const latSizes = window.actualSquareCorners.map(sq => sq.maxLat - sq.minLat);
-    const lonSizes = window.actualSquareCorners.map(sq => sq.maxLon - sq.minLon);
+    // Calculate grid steps directly from ubersquadrat dimensions
+    // Since we know it's exactly uberSize x uberSize squadrats
+    LAT_STEP = (uberMaxLat - uberMinLat) / uberSize;
+    LON_STEP = (uberMaxLon - uberMinLon) / uberSize;
 
-    // Filter to get single-square sizes (ignore double-width squares)
-    const singleLatSizes = latSizes.filter(s => s < 0.03); // Less than double size
-    const singleLonSizes = lonSizes.filter(s => s < 0.03);
+    console.log('Grid steps from ubersquadrat:', 'LAT=', LAT_STEP.toFixed(7), 'LON=', LON_STEP.toFixed(7));
 
-    // Use the most common (mode) or minimum size
-    LAT_STEP = Math.min(...singleLatSizes);
-    LON_STEP = Math.min(...singleLonSizes);
-
-    console.log('Grid steps from small squares:', 'LAT=', LAT_STEP.toFixed(7), 'LON=', LON_STEP.toFixed(7));
-
-    // Use first coordinate as reference, calculate origin via modulo
-    originLat = allLats[0] % LAT_STEP;
-    originLon = allLons[0] % LON_STEP;
-    console.log('Grid origin:', originLat.toFixed(7), originLon.toFixed(7));
-
-    // Convert ubersquadrat bounds to grid indices
-    const uberMinI = Math.round((allLats[0] - originLat) / LAT_STEP);
-    const uberMaxI = Math.round((allLats[allLats.length - 1] - originLat) / LAT_STEP) - 1;
-    const uberMinJ = Math.round((allLons[0] - originLon) / LON_STEP);
-    const uberMaxJ = Math.round((allLons[allLons.length - 1] - originLon) / LON_STEP) - 1;
-
-    console.log('Ubersquadrat grid: i=[', uberMinI, 'to', uberMaxI, '], j=[', uberMinJ, 'to', uberMaxJ, ']');
-    console.log('Size:', (uberMaxI - uberMinI + 1), 'x', (uberMaxJ - uberMinJ + 1), '=', (uberMaxI - uberMinI + 1) * (uberMaxJ - uberMinJ + 1), 'squares');
+    // Set origin to the ubersquadrat minimum corner
+    // This ensures the grid aligns with the ubersquadrat boundaries
+    originLat = uberMinLat;
+    originLon = uberMinLon;
+    console.log('Grid origin (ubersquadrat SW corner):', originLat.toFixed(7), originLon.toFixed(7));
 
     // --- Build visited set from ALL actual polygons with centroid matching ---
     visitedSet = new Set();
@@ -225,13 +219,15 @@ function loadKml(filename){
     console.log('Visited set:', visitedSet.size, 'unique grid squares from', allPolygons.length, 'polygons');
     console.log('Sample:', Array.from(visitedSet).slice(0, 10));
 
-    // Übersquadrat-Grenzen in Grid-Koordinaten umrechnen
-    const lats = overCoords.map(c=>c[0]);
-    const lons = overCoords.map(c=>c[1]);
-    const uberMinLat = Math.min(...lats);
-    const uberMaxLat = Math.max(...lats);
-    const uberMinLon = Math.min(...lons);
-    const uberMaxLon = Math.max(...lons);
+    // Convert ubersquadrat bounds to grid indices
+    // Since origin is at ubersquadrat SW corner and it's exactly uberSize x uberSize
+    const uberMinI = 0;
+    const uberMaxI = uberSize - 1;
+    const uberMinJ = 0;
+    const uberMaxJ = uberSize - 1;
+
+    console.log('Ubersquadrat grid: i=[', uberMinI, 'to', uberMaxI, '], j=[', uberMinJ, 'to', uberMaxJ, ']');
+    console.log('Size:', (uberMaxI - uberMinI + 1), 'x', (uberMaxJ - uberMinJ + 1), '=', (uberMaxI - uberMinI + 1) * (uberMaxJ - uberMinJ + 1), 'squares');
 
     // Use the same grid coordinates we calculated earlier for the visited set
     baseSquare = {minI: uberMinI, maxI: uberMaxI, minJ: uberMinJ, maxJ: uberMaxJ};
@@ -240,7 +236,7 @@ function loadKml(filename){
     // Draw the blue rectangle using grid-aligned coordinates
     // This helps visualize whether our grid is correctly aligned
     const gridAlignedMinLat = originLat + uberMinI * LAT_STEP;
-    const gridAlignedMaxLat = originLat + (uberMaxI + 1.47) * LAT_STEP;
+    const gridAlignedMaxLat = originLat + (uberMaxI + 1) * LAT_STEP;
     const gridAlignedMinLon = originLon + uberMinJ * LON_STEP;
     const gridAlignedMaxLon = originLon + (uberMaxJ + 1) * LON_STEP;
 
@@ -252,6 +248,44 @@ function loadKml(filename){
       '[', uberMaxLat.toFixed(6), ',', uberMaxLon.toFixed(6), ']');
 
     L.rectangle([[gridAlignedMinLat, gridAlignedMinLon],[gridAlignedMaxLat, gridAlignedMaxLon]], {color:'#0000ff',fillColor:'#0000ff',fillOpacity:0.15}).addTo(visitedLayer);
+
+    // --- Draw grid lines ---
+    gridLayer.clearLayers();
+    console.log('Drawing grid lines...');
+
+    // Calculate grid area to cover (extend beyond ubersquadrat by 10 squares)
+    const gridMinI = uberMinI - 10;
+    const gridMaxI = uberMaxI + 10;
+    const gridMinJ = uberMinJ - 10;
+    const gridMaxJ = uberMaxJ + 10;
+
+    // Draw horizontal grid lines (constant latitude)
+    for (let i = gridMinI; i <= gridMaxI + 1; i++) {
+      const lat = originLat + i * LAT_STEP; 
+      const lonStart = originLon + gridMinJ * LON_STEP;
+      const lonEnd = originLon + (gridMaxJ + 1) * LON_STEP;
+
+      L.polyline([[lat, lonStart], [lat, lonEnd]], {
+        color: '#555555',
+        weight: 1,
+        opacity: 1
+      }).addTo(gridLayer);
+    }
+
+    // Draw vertical grid lines (constant longitude)
+    for (let j = gridMinJ; j <= gridMaxJ + 1; j++) {
+      const lon = originLon + j * LON_STEP;
+      const latStart = originLat + gridMinI * LAT_STEP;
+      const latEnd = originLat + (gridMaxI + 1) * LAT_STEP;
+
+      L.polyline([[latStart, lon], [latEnd, lon]], {
+        color: '#888888',
+        weight: 1,
+        opacity: 0.3
+      }).addTo(gridLayer);
+    }
+
+    console.log('Grid drawn:', (gridMaxI - gridMinI + 2), 'horizontal lines,', (gridMaxJ - gridMinJ + 2), 'vertical lines');
 
     map.fitBounds([[uberMinLat, uberMinLon],[uberMaxLat, uberMaxLon]]);
   });
