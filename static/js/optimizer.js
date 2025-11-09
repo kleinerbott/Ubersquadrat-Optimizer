@@ -91,15 +91,9 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
   const unvisited = filtered.filter(c => !visitedSet.has(`${c.i},${c.j}`));
   console.log('After removing visited:', unvisited.length, 'unvisited squares');
 
-  // Calculate center for distance sorting
-  const centerI = (base.minI + base.maxI) / 2;
-  const centerJ = (base.minJ + base.maxJ) / 2;
-
-  // Sort by distance from center (prefer squares closer to center of that edge)
-  unvisited.forEach(c => {
-    c.distance = Math.sqrt(Math.pow(c.i - centerI, 2) + Math.pow(c.j - centerJ, 2));
-  });
-  unvisited.sort((a, b) => a.distance - b.distance);
+  // Don't sort by distance - select squares in their natural order
+  // This ensures all adjacent unvisited squares are considered equally
+  // Previously: sorted by distance from center, which de-prioritized corner squares
 
   // Take first targetNew squares
   const selected = unvisited.slice(0, targetNew);

@@ -12,6 +12,7 @@ const gridLayer = L.layerGroup().addTo(map);
 let LAT_STEP, LON_STEP, originLat, originLon;
 let visitedSet = new Set();
 let baseSquare = null;
+let kmlLoading = false;  // Flag to prevent race condition
 
 // KML Auswahl initialisieren
 fetch('/api/kmlfiles').then(r=>r.json()).then(files=>{
@@ -25,6 +26,7 @@ fetch('/api/kmlfiles').then(r=>r.json()).then(files=>{
 });
 
 function loadKml(filename){
+  kmlLoading = true;  // Set loading flag
   visitedLayer.clearLayers(); proposedLayer.clearLayers();
   const layer = omnivore.kml(`/data/${filename}`);
   layer.on('ready',()=>{
@@ -52,20 +54,33 @@ function loadKml(filename){
         let polygonsToProcess = [];
 
         if (geometry.type === 'Polygon') {
-            polygonsToProcess.push(geometry.coordinates[0]);
+            // Store full polygon including holes
+            polygonsToProcess.push({
+              outer: geometry.coordinates[0],
+              holes: geometry.coordinates.slice(1) // All inner rings (holes)
+            });
         } else if (geometry.type === 'MultiPolygon') {
             // Extract all polygons from MultiPolygon
             geometry.coordinates.forEach(polyCoords => {
-              polygonsToProcess.push(polyCoords[0]); // outer ring
+              polygonsToProcess.push({
+                outer: polyCoords[0],
+                holes: polyCoords.slice(1)
+              });
             });
         } else if (geometry.type === 'GeometryCollection') {
             // Extract polygons from GeometryCollection
             geometry.geometries.forEach(geom => {
               if (geom.type === 'Polygon') {
-                polygonsToProcess.push(geom.coordinates[0]);
+                polygonsToProcess.push({
+                  outer: geom.coordinates[0],
+                  holes: geom.coordinates.slice(1)
+                });
               } else if (geom.type === 'MultiPolygon') {
                 geom.coordinates.forEach(polyCoords => {
-                  polygonsToProcess.push(polyCoords[0]);
+                  polygonsToProcess.push({
+                    outer: polyCoords[0],
+                    holes: polyCoords.slice(1)
+                  });
                 });
               }
             });
@@ -76,27 +91,34 @@ function loadKml(filename){
         }
 
 
-        // Process each polygon
-        polygonsToProcess.forEach(coordsList => {
-          const latlon = coordsList.map(c=>[c[1],c[0]]); // [lon, lat] zu [lat, lon] tauschen
+        // Process each polygon (with holes)
+        polygonsToProcess.forEach(polyData => {
+          // Convert outer ring: [lon, lat] → [lat, lon]
+          const outerLatLon = polyData.outer.map(c=>[c[1],c[0]]);
 
-          // Add all polygons to allPolygons
-          allPolygons.push({coords:latlon});
+          // Convert holes: [lon, lat] → [lat, lon]
+          const holesLatLon = polyData.holes.map(hole => hole.map(c=>[c[1],c[0]]));
+
+          // Add all polygons to allPolygons with full structure
+          allPolygons.push({
+            outer: outerLatLon,
+            holes: holesLatLon
+          });
 
           if(isUbersquadrat){
             candidates.push({
               name: l.feature.properties.name,
-              coords: latlon,
+              coords: outerLatLon,  // Keep coords for compatibility
               size: parseInt(l.feature.properties.size) || 16
             });
           } else {
             // Only add non-ubersquadrat polygons to features for step calculation
-            features.push({coords:latlon});
+            features.push({outer: outerLatLon, holes: holesLatLon});
 
             // Collect actual square coordinates to determine grid alignment
             if (!isUbersquadrat) {
-              const lats = latlon.map(p => p[0]);
-              const lons = latlon.map(p => p[1]);
+              const lats = outerLatLon.map(p => p[0]);
+              const lons = outerLatLon.map(p => p[1]);
               const minLat = Math.min(...lats);
               const minLon = Math.min(...lons);
               const maxLat = Math.max(...lats);
@@ -181,53 +203,96 @@ function loadKml(filename){
 
     console.log('Grid steps from ubersquadrat:', 'LAT=', LAT_STEP.toFixed(7), 'LON=', LON_STEP.toFixed(7));
 
-    // Set origin to the ubersquadrat minimum corner
-    // This ensures the grid aligns with the ubersquadrat boundaries
+    // Set grid origin to ubersquadrat SW corner - this defines the authoritative grid
+    // The ubersquadrat has exact dimensions (size × size), so it defines grid alignment
     originLat = uberMinLat;
     originLon = uberMinLon;
     console.log('Grid origin (ubersquadrat SW corner):', originLat.toFixed(7), originLon.toFixed(7));
 
-    // --- Build visited set from ALL actual polygons with centroid matching ---
+    // --- Build visited set using grid-based scanning ---
     visitedSet = new Set();
 
-    console.log('Checking', allPolygons.length, 'polygons to build visited set...');
+    console.log('Starting grid-based scan of', allPolygons.length, 'polygons...');
 
-    allPolygons.forEach((poly, idx) => {
-      // Skip large polygons (ubersquadrat itself)
-      if (poly.coords.length > 100) {
-        console.log('Skipping large polygon with', poly.coords.length, 'vertices');
-        return;
+    // Helper: Check if point is inside a ring using ray casting
+    function isPointInRing(lat, lon, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const latI = ring[i][0], lonI = ring[i][1];
+        const latJ = ring[j][0], lonJ = ring[j][1];
+
+        const intersect = ((lonI > lon) !== (lonJ > lon))
+            && (lat < (latJ - latI) * (lon - lonI) / (lonJ - lonI) + latI);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // Helper: Check if point is inside polygon with holes
+    function isPointInPolygonWithHoles(lat, lon, polygon) {
+      // Check if point is inside outer ring
+      if (!isPointInRing(lat, lon, polygon.outer)) {
+        return false;  // Not inside outer boundary
       }
 
-      // Calculate centroid
-      const lats = poly.coords.map(p => p[0]);
-      const lons = poly.coords.map(p => p[1]);
-      const centroidLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-      const centroidLon = (Math.min(...lons) + Math.max(...lons)) / 2;
-
-      // Convert to grid index (with tolerance - round to nearest)
-      const i = Math.round((centroidLat - originLat) / LAT_STEP);
-      const j = Math.round((centroidLon - originLon) / LON_STEP);
-
-      visitedSet.add(`${i},${j}`);
-
-      if (idx < 5) {
-        console.log('Polygon', idx, ': centroid [', centroidLat.toFixed(6), ',', centroidLon.toFixed(6), '] -> grid [', i, ',', j, ']');
+      // Check if point is inside any hole (if so, it's NOT visited)
+      for (const hole of polygon.holes) {
+        if (isPointInRing(lat, lon, hole)) {
+          return false;  // Point is in a hole = unvisited
+        }
       }
-    });
 
-    console.log('Visited set:', visitedSet.size, 'unique grid squares from', allPolygons.length, 'polygons');
-    console.log('Sample:', Array.from(visitedSet).slice(0, 10));
+      return true;  // Inside outer ring and not in any hole = visited
+    }
 
-    // Convert ubersquadrat bounds to grid indices
-    // Since origin is at ubersquadrat SW corner and it's exactly uberSize x uberSize
+    // Ubersquadrat grid indices - since origin is at ubersquadrat SW corner
     const uberMinI = 0;
     const uberMaxI = uberSize - 1;
     const uberMinJ = 0;
     const uberMaxJ = uberSize - 1;
 
     console.log('Ubersquadrat grid: i=[', uberMinI, 'to', uberMaxI, '], j=[', uberMinJ, 'to', uberMaxJ, ']');
-    console.log('Size:', (uberMaxI - uberMinI + 1), 'x', (uberMaxJ - uberMinJ + 1), '=', (uberMaxI - uberMinI + 1) * (uberMaxJ - uberMinJ + 1), 'squares');
+
+    // Define scan area (extend beyond ubersquadrat)
+    const scanMinI = uberMinI - 20;
+    const scanMaxI = uberMaxI + 20;
+    const scanMinJ = uberMinJ - 20;
+    const scanMaxJ = uberMaxJ + 20;
+
+    console.log('Scanning grid area: i=[', scanMinI, 'to', scanMaxI, '], j=[', scanMinJ, 'to', scanMaxJ, ']');
+
+    // Scan each grid cell
+    let gridCellsChecked = 0;
+    let gridCellsMarked = 0;
+
+    for (let i = scanMinI; i <= scanMaxI; i++) {
+      for (let j = scanMinJ; j <= scanMaxJ; j++) {
+        gridCellsChecked++;
+
+        // Calculate grid cell center
+        const cellCenterLat = originLat + (i + 0.5) * LAT_STEP;
+        const cellCenterLon = originLon + (j + 0.5) * LON_STEP;
+
+        // Check if this cell center is inside any polygon
+        let foundInPolygon = false;
+
+        for (const poly of allPolygons) {
+          // Check if point is inside polygon (accounting for holes)
+          if (isPointInPolygonWithHoles(cellCenterLat, cellCenterLon, poly)) {
+            foundInPolygon = true;
+            break;
+          }
+        }
+
+        if (foundInPolygon) {
+          visitedSet.add(`${i},${j}`);
+          gridCellsMarked++;
+        }
+      }
+    }
+
+    console.log('Grid scan complete:', gridCellsChecked, 'cells checked,', gridCellsMarked, 'cells marked as visited');
+    console.log('Visited set size:', visitedSet.size);
 
     // Use the same grid coordinates we calculated earlier for the visited set
     baseSquare = {minI: uberMinI, maxI: uberMaxI, minJ: uberMinJ, maxJ: uberMaxJ};
@@ -288,6 +353,10 @@ function loadKml(filename){
     console.log('Grid drawn:', (gridMaxI - gridMinI + 2), 'horizontal lines,', (gridMaxJ - gridMinJ + 2), 'vertical lines');
 
     map.fitBounds([[uberMinLat, uberMinLon],[uberMaxLat, uberMaxLon]]);
+
+    // Clear loading flag - KML is fully loaded and visitedSet is complete
+    kmlLoading = false;
+    console.log('KML loading complete, ready for optimization');
   });
 
   layer.addTo(visitedLayer);
@@ -295,12 +364,13 @@ function loadKml(filename){
 
 
 document.getElementById('optimizeBtn').addEventListener('click',()=>{
+  if(kmlLoading){ alert('KML wird noch geladen, bitte warten...'); return; }
   if(!baseSquare){ alert('Noch kein Übersquadrat erkannt'); return; }
   const n=parseInt(document.getElementById('numAdd').value);
   const dir=document.getElementById('direction').value;
   const newRects=optimizeSquare(baseSquare,n,dir,visitedSet,LAT_STEP,LON_STEP,originLat,originLon);
   proposedLayer.clearLayers();
   newRects.forEach(r=>{
-    L.rectangle(r,{color:'#ffd700',fillColor:'#ffd700',fillOpacity:0.8}).addTo(proposedLayer);
+    L.rectangle(r,{color:'#ffd700',fillColor:'#ffd700',fillOpacity:0.3}).addTo(proposedLayer);
   });
 });
