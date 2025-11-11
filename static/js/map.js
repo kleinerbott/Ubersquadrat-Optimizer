@@ -1,4 +1,5 @@
 import { optimizeSquare } from './optimizer.js';
+import { calculateRoute, formatTime } from './router.js';
 
 // Configuration Constants
 const CONFIG = {
@@ -9,19 +10,38 @@ const CONFIG = {
   GRID_VERTICAL_COLOR: '#888888',  // Vertical grid lines (lighter)
   GRID_VERTICAL_OPACITY: 0.3,
   UBERSQUADRAT_COLOR: '#0000ff',
-  UBERSQUADRAT_OPACITY: 0.15,
+  UBERSQUADRAT_OPACITY: 0.1,
   PROPOSED_COLOR: '#ffd700',
   PROPOSED_OPACITY: 0.3,
   VISITED_COLOR: '#00ff00',
   VISITED_BORDER_COLOR: '#007700',
-  VISITED_OPACITY: 0.3,
+  VISITED_OPACITY: 0.1,
+  ROUTE_LINE_COLOR: '#ffff00ff',
+  ROUTE_LINE_WEIGHT: 4,
+  ROUTE_LINE_OPACITY: 0.7,
+  START_MARKER_COLOR: '#00cc00',
+  START_MARKER_RADIUS: 8,
+  MAX_ROUTE_WAYPOINTS: 50,
+  BROUTER_API_URL: 'https://brouter.de/brouter',
   DOM_IDS: {
     KML_SELECT: 'kmlSelect',
     OPTIMIZE_BTN: 'optimizeBtn',
     NUM_ADD: 'numAdd',
     DIRECTION: 'direction',
     OPTIMIZATION_MODE: 'optimizationMode',
-    MAX_HOLE_SIZE: 'maxHoleSize'
+    MAX_HOLE_SIZE: 'maxHoleSize',
+    BIKE_TYPE: 'bikeType',
+    ROUNDTRIP: 'roundtrip',
+    SELECT_START_BTN: 'selectStartBtn',
+    START_POINT_STATUS: 'startPointStatus',
+    CALCULATE_ROUTE_BTN: 'calculateRouteBtn',
+    ROUTE_DISTANCE: 'routeDistance',
+    ROUTE_ELEVATION: 'routeElevation',
+    ROUTE_TIME: 'routeTime',
+    ROUTE_STATS: 'routeStats',
+    ROUTE_EXPORT: 'routeExport',
+    EXPORT_GPX_BTN: 'exportGpxBtn',
+    EXPORT_KML_BTN: 'exportKmlBtn'
   }
 };
 
@@ -33,6 +53,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 const visitedLayer = L.layerGroup().addTo(map);
 const proposedLayer = L.layerGroup().addTo(map);
 const gridLayer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
 
 // Application State
 const AppState = {
@@ -45,11 +66,51 @@ const AppState = {
   visitedSet: new Set(),
   baseSquare: null,
   kmlLoading: false,
+  routing: {
+    startPoint: null,           // { lat, lon } or null
+    selectingStartPoint: false,  // Whether user is clicking to select start
+    currentRoute: null,          // Route data from BRouter
+    routeGeoJSON: null           // Parsed GeoJSON for display
+  },
 
   reset() {
     this.visitedSet.clear();
     this.baseSquare = null;
     this.grid = { latStep: null, lonStep: null, originLat: null, originLon: null };
+  },
+
+  resetRoute() {
+    this.routing.startPoint = null;
+    this.routing.selectingStartPoint = false;
+    this.routing.currentRoute = null;
+    this.routing.routeGeoJSON = null;
+    routeLayer.clearLayers();
+    this.updateRouteUI();
+  },
+
+  updateRouteUI() {
+    const statusEl = document.getElementById(CONFIG.DOM_IDS.START_POINT_STATUS);
+    const routeBtn = document.getElementById(CONFIG.DOM_IDS.CALCULATE_ROUTE_BTN);
+    const statsEl = document.getElementById(CONFIG.DOM_IDS.ROUTE_STATS);
+    const exportEl = document.getElementById(CONFIG.DOM_IDS.ROUTE_EXPORT);
+
+    if (this.routing.startPoint) {
+      statusEl.textContent = `Startpunkt: ${this.routing.startPoint.lat.toFixed(5)}, ${this.routing.startPoint.lon.toFixed(5)}`;
+      statusEl.style.color = '#00cc00';
+      routeBtn.disabled = false;
+    } else {
+      statusEl.textContent = 'Kein Startpunkt gewählt';
+      statusEl.style.color = '#666';
+      routeBtn.disabled = true;
+    }
+
+    if (this.routing.currentRoute) {
+      statsEl.style.display = 'block';
+      exportEl.style.display = 'block';
+    } else {
+      statsEl.style.display = 'none';
+      exportEl.style.display = 'none';
+    }
   },
 
   isReady() {
@@ -479,6 +540,77 @@ function loadKml(filename){
   layer.addTo(visitedLayer);
 }
 
+// ===== ROUTING HELPER FUNCTIONS =====
+
+/**
+ * Visualize calculated route on the map
+ * @param {Object} routeData - Route data from router.js
+ */
+function visualizeRoute(routeData) {
+  // Clear existing route visualization (keep start marker)
+  const startMarker = [];
+  routeLayer.eachLayer(layer => {
+    if (layer instanceof L.CircleMarker) {
+      startMarker.push(layer);
+    }
+  });
+  routeLayer.clearLayers();
+  startMarker.forEach(m => m.addTo(routeLayer));
+
+  // Convert coordinates to Leaflet format [[lat, lon], ...]
+  const latlngs = routeData.coordinates.map(coord => [coord.lat, coord.lon]);
+
+  // Draw route polyline
+  L.polyline(latlngs, {
+    color: CONFIG.ROUTE_LINE_COLOR,
+    weight: CONFIG.ROUTE_LINE_WEIGHT,
+    opacity: CONFIG.ROUTE_LINE_OPACITY
+  }).addTo(routeLayer);
+
+  // Optionally add waypoint markers (small dots at each proposed square)
+  if (routeData.waypoints && routeData.waypoints.length < 30) {
+    routeData.waypoints.forEach((wp, index) => {
+      // Skip start point (already has marker)
+      if (index === 0) return;
+
+      L.circleMarker([wp.lat, wp.lon], {
+        radius: 3,
+        fillColor: '#ffffff',
+        color: CONFIG.ROUTE_LINE_COLOR,
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 0.8
+      }).addTo(routeLayer);
+    });
+  }
+
+  console.log('Route visualized on map');
+}
+
+/**
+ * Update route statistics display in UI
+ * @param {Object} routeData - Route data from router.js
+ */
+function updateRouteStatistics(routeData) {
+  // Update distance
+  document.getElementById(CONFIG.DOM_IDS.ROUTE_DISTANCE).textContent = routeData.distance.toFixed(1);
+
+  // Update elevation gain
+  document.getElementById(CONFIG.DOM_IDS.ROUTE_ELEVATION).textContent = routeData.elevationGain;
+
+  // Update time
+  document.getElementById(CONFIG.DOM_IDS.ROUTE_TIME).textContent = formatTime(routeData.time);
+
+  // Show stats and export sections
+  document.getElementById(CONFIG.DOM_IDS.ROUTE_STATS).style.display = 'block';
+  document.getElementById(CONFIG.DOM_IDS.ROUTE_EXPORT).style.display = 'block';
+
+  console.log('Route statistics updated in UI');
+}
+
+// ===== EVENT LISTENERS =====
+
+// Optimize button
 document.getElementById(CONFIG.DOM_IDS.OPTIMIZE_BTN).addEventListener('click',()=>{
   if(!AppState.isReady()){ alert('KML wird noch geladen, bitte warten...'); return; }
   if(!AppState.baseSquare){ alert('Noch kein Übersquadrat erkannt'); return; }
@@ -496,4 +628,245 @@ document.getElementById(CONFIG.DOM_IDS.OPTIMIZE_BTN).addEventListener('click',()
   newRects.forEach(r=>{
     L.rectangle(r,{color:'#ffd700',fillColor:'#ffd700',fillOpacity:0.3}).addTo(proposedLayer);
   });
+
+  // Clear route when re-optimizing (new squares selected)
+  AppState.resetRoute();
 });
+
+// Select start point button
+document.getElementById(CONFIG.DOM_IDS.SELECT_START_BTN).addEventListener('click', () => {
+  AppState.routing.selectingStartPoint = !AppState.routing.selectingStartPoint;
+  const btn = document.getElementById(CONFIG.DOM_IDS.SELECT_START_BTN);
+
+  if (AppState.routing.selectingStartPoint) {
+    btn.textContent = '❌ Abbrechen';
+    btn.style.background = '#ff6666';
+    map.getContainer().style.cursor = 'crosshair';
+  } else {
+    btn.textContent = '📍 Startpunkt wählen';
+    btn.style.background = '';
+    map.getContainer().style.cursor = '';
+  }
+});
+
+// Map click handler for start point selection
+map.on('click', (e) => {
+  if (AppState.routing.selectingStartPoint) {
+    // Set start point
+    AppState.routing.startPoint = { lat: e.latlng.lat, lon: e.latlng.lng };
+
+    // Clear existing start marker
+    routeLayer.clearLayers();
+
+    // Add start point marker
+    L.circleMarker([e.latlng.lat, e.latlng.lng], {
+      radius: CONFIG.START_MARKER_RADIUS,
+      fillColor: CONFIG.START_MARKER_COLOR,
+      color: '#ffffff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.8
+    }).addTo(routeLayer);
+
+    // Exit selection mode
+    AppState.routing.selectingStartPoint = false;
+    const btn = document.getElementById(CONFIG.DOM_IDS.SELECT_START_BTN);
+    btn.textContent = '📍 Startpunkt wählen';
+    btn.style.background = '';
+    map.getContainer().style.cursor = '';
+
+    // Update UI
+    AppState.updateRouteUI();
+  }
+});
+
+// Calculate route button
+document.getElementById(CONFIG.DOM_IDS.CALCULATE_ROUTE_BTN).addEventListener('click', async () => {
+  if (!AppState.routing.startPoint) {
+    alert('Bitte zuerst einen Startpunkt wählen');
+    return;
+  }
+
+  // Get routing parameters
+  const bikeType = document.getElementById(CONFIG.DOM_IDS.BIKE_TYPE).value;
+  const roundtrip = document.getElementById(CONFIG.DOM_IDS.ROUNDTRIP).checked;
+
+  // Disable button during calculation
+  const btn = document.getElementById(CONFIG.DOM_IDS.CALCULATE_ROUTE_BTN);
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Berechne Route...';
+
+  try {
+    console.log('Calculating route...');
+
+    // Calculate route through proposed squares
+    const routeData = await calculateRoute(
+      proposedLayer,
+      AppState.routing.startPoint,
+      bikeType,
+      roundtrip,
+      CONFIG.BROUTER_API_URL
+    );
+
+    console.log('Route calculated:', routeData);
+
+    // Store route data
+    AppState.routing.currentRoute = routeData;
+    AppState.routing.routeGeoJSON = routeData.rawGeoJSON;
+
+    // Visualize route on map
+    visualizeRoute(routeData);
+
+    // Update statistics display
+    updateRouteStatistics(routeData);
+
+    // Show success message
+    console.log(`Route: ${routeData.distance.toFixed(1)} km, ${routeData.elevationGain} m, ${routeData.time} min`);
+
+    // Show warning if route was simplified
+    if (routeData.simplified) {
+      alert(`Hinweis: Die Route konnte nicht durch alle ${routeData.allSquares.length} Quadrate berechnet werden.\n\nStattdessen wurde eine vereinfachte Route durch ${routeData.waypoints.length} Wegpunkte erstellt.\n\nEinige Quadrate wurden übersprungen. Für vollständige Routen versuchen Sie es mit < 15 Quadraten.`);
+    }
+
+  } catch (error) {
+    console.error('Route calculation error:', error);
+    alert(`Fehler bei der Routenberechnung: ${error.message}`);
+  } finally {
+    // Re-enable button
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
+
+// Export GPX button
+document.getElementById(CONFIG.DOM_IDS.EXPORT_GPX_BTN).addEventListener('click', () => {
+  if (!AppState.routing.currentRoute) {
+    alert('Keine Route zum Exportieren vorhanden');
+    return;
+  }
+
+  try {
+    const gpxContent = generateGPX(AppState.routing.currentRoute);
+    downloadFile(gpxContent, 'squadrats-route.gpx', 'application/gpx+xml');
+    console.log('GPX export successful');
+  } catch (error) {
+    console.error('GPX export error:', error);
+    alert(`Fehler beim GPX-Export: ${error.message}`);
+  }
+});
+
+// Export KML button
+document.getElementById(CONFIG.DOM_IDS.EXPORT_KML_BTN).addEventListener('click', () => {
+  if (!AppState.routing.currentRoute) {
+    alert('Keine Route zum Exportieren vorhanden');
+    return;
+  }
+
+  try {
+    const kmlContent = generateKML(AppState.routing.currentRoute);
+    downloadFile(kmlContent, 'squadrats-route.kml', 'application/vnd.google-earth.kml+xml');
+    console.log('KML export successful');
+  } catch (error) {
+    console.error('KML export error:', error);
+    alert(`Fehler beim KML-Export: ${error.message}`);
+  }
+});
+
+// ===== EXPORT HELPER FUNCTIONS =====
+
+/**
+ * Generate GPX file content from route data
+ * @param {Object} routeData - Route data
+ * @returns {string} GPX XML content
+ */
+function generateGPX(routeData) {
+  const timestamp = new Date().toISOString();
+
+  let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Squadrats Navigator"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Squadrats Route</name>
+    <desc>Bicycle route through proposed squares - ${routeData.distance.toFixed(1)} km, ${routeData.elevationGain} m elevation</desc>
+    <time>${timestamp}</time>
+  </metadata>
+  <trk>
+    <name>Squadrats Route</name>
+    <type>Cycling</type>
+    <trkseg>
+`;
+
+  // Add all track points
+  routeData.coordinates.forEach(coord => {
+    gpx += `      <trkpt lat="${coord.lat}" lon="${coord.lon}">
+        <ele>${coord.elevation}</ele>
+      </trkpt>\n`;
+  });
+
+  gpx += `    </trkseg>
+  </trk>
+</gpx>`;
+
+  return gpx;
+}
+
+/**
+ * Generate KML file content from route data
+ * @param {Object} routeData - Route data
+ * @returns {string} KML XML content
+ */
+function generateKML(routeData) {
+  let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Squadrats Route</name>
+    <description>Bicycle route: ${routeData.distance.toFixed(1)} km, ${routeData.elevationGain} m elevation gain</description>
+    <Style id="routeStyle">
+      <LineStyle>
+        <color>ff0066ff</color>
+        <width>4</width>
+      </LineStyle>
+    </Style>
+    <Placemark>
+      <name>Squadrats Bicycle Route</name>
+      <description>Distance: ${routeData.distance.toFixed(1)} km, Elevation: ${routeData.elevationGain} m, Time: ${formatTime(routeData.time)}</description>
+      <styleUrl>#routeStyle</styleUrl>
+      <LineString>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>
+`;
+
+  // Add all coordinates (KML format: lon,lat,elevation)
+  routeData.coordinates.forEach(coord => {
+    kml += `          ${coord.lon},${coord.lat},${coord.elevation}\n`;
+  });
+
+  kml += `        </coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+
+  return kml;
+}
+
+/**
+ * Download file helper
+ * @param {string} content - File content
+ * @param {string} filename - Filename
+ * @param {string} mimeType - MIME type
+ */
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

@@ -35,6 +35,31 @@
     <input id="maxHoleSize" type="range" value="3" min="1" max="10">
     <small style="display:block;margin-bottom:10px;color:#666;">(Löcher > dieser Größe werden ignoriert)</small>
     <button id="optimizeBtn">Optimieren</button>
+    <hr>
+    <h4 style="margin-top:10px;margin-bottom:10px;">📍 Routing</h4>
+    <label>Bike-Typ:</label>
+    <select id="bikeType">
+      <option value="trekking">Straße</option>
+      <option value="gravel">Gravel</option>
+      <option value="fastbike">Schnelles Rennrad</option>
+    </select>
+    <label style="display:flex;align-items:center;margin-top:10px;">
+      <input type="checkbox" id="roundtrip" style="margin-right:5px;">
+      <span>Rundreise (Start = Ziel)</span>
+    </label>
+    <button id="selectStartBtn" style="margin-top:10px;">📍 Startpunkt wählen</button>
+    <small id="startPointStatus" style="display:block;margin-top:5px;color:#666;font-style:italic;">Kein Startpunkt gewählt</small>
+    <small style="display:block;margin-top:5px;color:#ff6600;font-size:11px;">💡 Tipp: Routing funktioniert am besten mit Richtungs- oder Kantenabschluss-Modus (Quadrate bleiben zusammen)</small>
+    <button id="calculateRouteBtn" style="margin-top:10px;" disabled>🚴 Route berechnen</button>
+    <div id="routeStats" style="margin-top:10px;padding:8px;background:#f0f0f0;border-radius:4px;display:none;">
+      <div><strong>Route:</strong> <span id="routeDistance">--</span> km</div>
+      <div><strong>Höhe:</strong> ↗ <span id="routeElevation">--</span> m</div>
+      <div><strong>Zeit:</strong> ⏱ <span id="routeTime">--:--</span></div>
+    </div>
+    <div id="routeExport" style="margin-top:10px;display:none;">
+      <button id="exportGpxBtn" style="width:48%;margin-right:4%;">💾 GPX</button>
+      <button id="exportKmlBtn" style="width:48%;">💾 KML</button>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
