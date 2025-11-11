@@ -14,8 +14,8 @@
     <label>KML-Datei:</label>
     <select id="kmlSelect"></select>
     <hr>
-    <label>Neue Quadrate:</label>
-    <input id="numAdd" type="number" value="5" min="1">
+    <label>Neue Quadrate: <span id="numAddValue">5</span></label>
+    <input id="numAdd" type="range" value="5" min="1" max="20">
     <label>Richtung:</label>
     <select id="direction">
       <option value="all">Alle</option>
@@ -24,11 +24,35 @@
       <option value="E">Osten</option>
       <option value="W">Westen</option>
     </select>
+    <hr>
+    <label>Optimierungsmodus:</label>
+    <select id="optimizationMode">
+      <option value="balanced">Ausgewogen</option>
+      <option value="edge">Kantenabschluss</option>
+      <option value="holes">Löcher füllen</option>
+    </select>
+    <label>Max. Lochgröße: <span id="maxHoleSizeValue">3</span></label>
+    <input id="maxHoleSize" type="range" value="3" min="1" max="10">
+    <small style="display:block;margin-bottom:10px;color:#666;">(Löcher > dieser Größe werden ignoriert)</small>
     <button id="optimizeBtn">Optimieren</button>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-omnivore@0.3.4/leaflet-omnivore.min.js"></script>
+  <script>
+    // Update slider value displays
+    const numAddSlider = document.getElementById('numAdd');
+    const numAddValue = document.getElementById('numAddValue');
+    numAddSlider.addEventListener('input', (e) => {
+      numAddValue.textContent = e.target.value;
+    });
+
+    const maxHoleSizeSlider = document.getElementById('maxHoleSize');
+    const maxHoleSizeValue = document.getElementById('maxHoleSizeValue');
+    maxHoleSizeSlider.addEventListener('input', (e) => {
+      maxHoleSizeValue.textContent = e.target.value;
+    });
+  </script>
   <script type="module" src="js/map.js"></script>
 </body>
 </html>
