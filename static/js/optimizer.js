@@ -184,7 +184,7 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
   });
 
 
-  // === PHASE 2: FIND UBERSQUADRAT BORDER LAYER SQUARES ===
+  // === Step 2: FIND UBERSQUADRAT BORDER LAYER SQUARES ===
   function findPerimeterSquares() {
     const candidates = new Map();
     const bounds = getSearchBounds(5);
@@ -240,9 +240,13 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
     const isBorder = isOnUbersquadratBorder(square.i, square.j);
     const layerDistance = isBorder ? 0 : calculateLayerDistance(square.i, square.j).total;
 
-    if (layerDistance === 0) score += 5000;
-    else if (layerDistance === 1) score += 1500;
-    else if (layerDistance === 2) score += 750;
+    // Strongly prioritize proximity with bonuses AND penalties
+    if (layerDistance === 0) score += 10000;
+    else if (layerDistance === 1) score += 5000;
+    else if (layerDistance === 2) score += 2000;
+    else if (layerDistance === 3) score += 500;
+    else if (layerDistance === 4) score -= 2000;
+    else if (layerDistance >= 5) score -= 10000;
 
     // === EDGE COMPLETION ===
     const maxEdgeCompletion = ['N', 'S', 'E', 'W']
@@ -255,15 +259,21 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
     const hole = squareToHoleMap.get(squareKey);
     let holeSizeBonus = 0;
 
-    if (hole) {
-      holeSizeBonus = hole.size * 2000;
+     if (hole) {
+   // Reduce base multiplier: 2000 → 800
+   // Apply layer-based reduction
+   let holeMultiplier = 800;
+   if (layerDistance >= 3) holeMultiplier = 400;  // 50%  
+   if (layerDistance >= 5) holeMultiplier = 200;  // 25%  
 
-      // Bonus for completing entire hole
-      const unvisitedInHole = hole.squares.filter(sq =>
-        !visitedSet.has(sq.key) && sq.key !== squareKey
-      ).length;
-      if (unvisitedInHole === 0) score += 3000;
-    }
+   holeSizeBonus = hole.size * holeMultiplier;
+
+   // Keep completion bonus but reduce: 3000 → 1500       
+   const unvisitedInHole = hole.squares.filter(sq =>      
+     !visitedSet.has(sq.key) && sq.key !== squareKey      
+   ).length;
+   if (unvisitedInHole === 0) score += 1500;
+  }
 
     // === MODE MULTIPLIERS ===
     const mult = MODE_MULTIPLIERS[optimizationMode] || MODE_MULTIPLIERS.balanced;
@@ -277,20 +287,28 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
     score += adjacency * 25;
 
     // === DIRECTION FILTER ===
-    if (direction !== 'all') {
+    // direction is now an array of selected directions (e.g., ['N', 'E'])
+    if (Array.isArray(direction) && direction.length < 4) {
+      // Not all directions selected - apply filtering
       const matches = {
         N: square.i > base.maxI,
         S: square.i < base.minI,
         E: square.j > base.maxJ,
         W: square.j < base.minJ
       };
-      if (!matches[direction]) score -= 1000000;
+
+      // Check if square matches ANY of the selected directions
+      const matchesAnyDirection = direction.some(dir => matches[dir]);
+
+      // If doesn't match any selected direction, apply penalty
+      if (!matchesAnyDirection) score -= 1000000;
     }
+    // If all 4 directions selected or not an array, no filtering (all squares allowed)
 
     return {...square, score, layerDistance};
   });
 
-  // === PHASE 5: GREEDY ROUTE SELECTION ===
+  // === Step 5: GREEDY ROUTE SELECTION ===
   const selected = [];
   const remaining = [...scored];
 
@@ -311,7 +329,7 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
       const dist = manhattanDistance(sq, last);
       sq.routeScore = sq.score - (dist * 100);
 
-      // Bonus: Complete holes we've started filling
+      // Bonus: Complete holes that have started to be filled
       const sqHole = squareToHoleMap.get(`${sq.i},${sq.j}`);
       if (sqHole && selected.some(s => squareToHoleMap.get(`${s.i},${s.j}`)?.id === sqHole.id)) {
         sq.routeScore += 1500;
@@ -322,7 +340,6 @@ export function optimizeSquare(base, targetNew, direction, visitedSet, LAT_STEP,
     selected.push(remaining.shift());
   }
 
-  // === PHASE 6: RESULT SUMMARY ===
   console.log(`Selected ${selected.length} squares: ${selected.map(s => `(${s.i},${s.j})`).join(' → ')}`);
 
   const results = selected.map(s => rectFromIJ(s.i, s.j));

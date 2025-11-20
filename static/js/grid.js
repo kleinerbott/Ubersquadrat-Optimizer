@@ -27,7 +27,7 @@ export function calculateGridParameters(uberCoords, uberSize) {
 
   console.log('Grid steps from ubersquadrat:', 'LAT=', latStep.toFixed(7), 'LON=', lonStep.toFixed(7));
 
-  // Set grid origin to ubersquadrat SW corner - this defines the authoritative grid
+  // Set grid origin to ubersquadrat SW corner
   const originLat = uberMinLat;
   const originLon = uberMinLon;
   console.log('Grid origin (ubersquadrat SW corner):', originLat.toFixed(7), originLon.toFixed(7));
@@ -65,7 +65,7 @@ export function scanAndBuildVisitedSet(allPolygons, baseSquare, gridParams) {
 
   console.log('Starting grid-based scan of', allPolygons.length, 'polygons...');
 
-  // Define scan area (extend beyond ubersquadrat)
+  // Define scan area for new squares
   const scanMinI = baseSquare.minI - CONFIG.SCAN_RADIUS_BUFFER;
   const scanMaxI = baseSquare.maxI + CONFIG.SCAN_RADIUS_BUFFER;
   const scanMinJ = baseSquare.minJ - CONFIG.SCAN_RADIUS_BUFFER;
@@ -73,7 +73,6 @@ export function scanAndBuildVisitedSet(allPolygons, baseSquare, gridParams) {
 
   console.log('Scanning grid area: i=[', scanMinI, 'to', scanMaxI, '], j=[', scanMinJ, 'to', scanMaxJ, ']');
 
-  // Scan each grid cell
   let gridCellsChecked = 0;
   let gridCellsMarked = 0;
 

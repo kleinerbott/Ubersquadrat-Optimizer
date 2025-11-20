@@ -28,13 +28,13 @@
     <label>Neue Quadrate: <span id="numAddValue">5</span></label>
     <input id="numAdd" type="range" value="5" min="1" max="20">
     <label>Richtung:</label>
-    <select id="direction">
-      <option value="all">Alle</option>
-      <option value="N">Norden</option>
-      <option value="S">Süden</option>
-      <option value="E">Osten</option>
-      <option value="W">Westen</option>
-    </select>
+    <div class="direction-buttons">
+      <button type="button" id="directionBtnN" class="direction-btn" data-direction="N">N</button>
+      <button type="button" id="directionBtnS" class="direction-btn" data-direction="S">S</button>
+      <button type="button" id="directionBtnE" class="direction-btn" data-direction="E">E</button>
+      <button type="button" id="directionBtnW" class="direction-btn" data-direction="W">W</button>
+      <button type="button" id="directionBtnAll" class="direction-btn all-btn selected">Alle</button>
+    </div>
     <hr>
     <label>Optimierungsmodus:</label>
     <select id="optimizationMode">

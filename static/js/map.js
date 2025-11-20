@@ -138,6 +138,119 @@ async function initializeKmlLoader() {
 
 // Initialize the application
 initializeKmlLoader();
+initializeDirectionButtons();
+
+/**
+ * Initialize direction button toggle functionality
+ * Implements multi-select with auto-sync to "All" button
+ */
+function initializeDirectionButtons() {
+  const btnN = document.getElementById(CONFIG.DOM_IDS.DIRECTION_BTN_N);
+  const btnS = document.getElementById(CONFIG.DOM_IDS.DIRECTION_BTN_S);
+  const btnE = document.getElementById(CONFIG.DOM_IDS.DIRECTION_BTN_E);
+  const btnW = document.getElementById(CONFIG.DOM_IDS.DIRECTION_BTN_W);
+  const btnAll = document.getElementById(CONFIG.DOM_IDS.DIRECTION_BTN_ALL);
+
+  // Check if all buttons were found
+  if (!btnN || !btnS || !btnE || !btnW || !btnAll) {
+    console.error('Direction buttons not found:', { btnN, btnS, btnE, btnW, btnAll });
+    return;
+  }
+
+  const directionalButtons = [btnN, btnS, btnE, btnW];
+
+  // Initialize with all directions selected (matching "All" button)
+  directionalButtons.forEach(btn => btn.classList.add('selected'));
+
+  /**
+   * Check if all directional buttons are selected
+   */
+  function areAllDirectionsSelected() {
+    return directionalButtons.every(btn => btn.classList.contains('selected'));
+  }
+
+  /**
+   * Count how many directional buttons are selected
+   */
+  function getSelectedCount() {
+    return directionalButtons.filter(btn => btn.classList.contains('selected')).length;
+  }
+
+  /**
+   * Update "All" button based on directional button state
+   */
+  function updateAllButton() {
+    if (areAllDirectionsSelected()) {
+      btnAll.classList.add('selected');
+    } else {
+      btnAll.classList.remove('selected');
+    }
+  }
+
+  /**
+   * Handle directional button click (N, S, E, W)
+   */
+  function handleDirectionalButtonClick(button) {
+    const isSelected = button.classList.contains('selected');
+
+    // Prevent deselecting if it's the last selected button
+    if (isSelected && getSelectedCount() === 1) {
+      return; // Do nothing - keep at least one selected
+    }
+
+    // Toggle selection
+    button.classList.toggle('selected');
+
+    // Update "All" button state
+    updateAllButton();
+  }
+
+  /**
+   * Handle "All" button click
+   */
+  function handleAllButtonClick() {
+    const isAllSelected = btnAll.classList.contains('selected');
+
+    if (isAllSelected) {
+      // "All" is currently selected - deselect all (but keep at least one)
+      // Since we require at least one, we won't actually deselect all
+      // Instead, just deselect "All" and keep N selected
+      btnAll.classList.remove('selected');
+      directionalButtons.forEach(btn => btn.classList.remove('selected'));
+      btnN.classList.add('selected'); // Keep at least one selected
+    } else {
+      // "All" is not selected - select all directions
+      btnAll.classList.add('selected');
+      directionalButtons.forEach(btn => btn.classList.add('selected'));
+    }
+  }
+
+  // Attach event listeners
+  directionalButtons.forEach(btn => {
+    btn.addEventListener('click', () => handleDirectionalButtonClick(btn));
+  });
+
+  btnAll.addEventListener('click', handleAllButtonClick);
+}
+
+/**
+ * Get array of currently selected directions
+ * @returns {string[]} Array of direction strings (e.g., ['N', 'E'])
+ */
+function getSelectedDirections() {
+  const directions = ['N', 'S', 'E', 'W'];
+  const selected = [];
+
+  directions.forEach(dir => {
+    const btnId = CONFIG.DOM_IDS[`DIRECTION_BTN_${dir}`];
+    const btn = document.getElementById(btnId);
+    if (btn && btn.classList.contains('selected')) {
+      selected.push(dir);
+    }
+  });
+
+  return selected;
+}
 
 /**
  * Load and process KML file from content string
@@ -317,14 +430,14 @@ function handleOptimizeClick() {
   }
 
   const numSquaresToAdd = parseInt(document.getElementById(CONFIG.DOM_IDS.NUM_ADD).value);
-  const direction = document.getElementById(CONFIG.DOM_IDS.DIRECTION).value;
+  const selectedDirections = getSelectedDirections();
   const optimizationMode = document.getElementById(CONFIG.DOM_IDS.OPTIMIZATION_MODE).value;
   const maxHoleSize = parseInt(document.getElementById(CONFIG.DOM_IDS.MAX_HOLE_SIZE).value);
 
   const proposedSquares = optimizeSquare(
     AppState.baseSquare,
     numSquaresToAdd,
-    direction,
+    selectedDirections,
     AppState.visitedSet,
     AppState.grid.latStep,
     AppState.grid.lonStep,

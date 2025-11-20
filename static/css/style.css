@@ -8,7 +8,46 @@ body { margin:0; padding:0; font-family:Arial; }
 }
 #sidebar label { display:block; margin-top:6px; }
 #sidebar select, #sidebar input { width:100%; margin-bottom:6px; }
-#sidebar button {
+#sidebar button:not(.direction-btn) {
   width:100%; padding:8px; margin-top:8px;
   background:#007bff; color:white; border:none; border-radius:4px;
+}
+
+/* Direction button group */
+.direction-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.direction-btn {
+  flex: 1 1 calc(25% - 4px);
+  min-width: 30px;
+  padding: 6px 8px;
+  margin: 0;
+  background: #e0e0e0;
+  color: #333;
+  border: 2px solid #999;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.direction-btn:hover {
+  background: #d0d0d0;
+  border-color: #777;
+}
+
+.direction-btn.selected {
+  background: #ffd700;
+  color: #333;
+  border-color: #daa520;
+  font-weight: bold;
+}
+
+.direction-btn.all-btn {
+  flex: 1 1 100%;
 }

@@ -45,7 +45,6 @@ export async function loadKmlWithFilePicker() {
       content: content
     };
   } catch (error) {
-    // User cancelled or error occurred
     if (error.name === 'AbortError') {
       throw new Error('File selection cancelled');
     }
@@ -59,7 +58,6 @@ export async function loadKmlWithFilePicker() {
  */
 export function loadKmlWithFileInput() {
   return new Promise((resolve, reject) => {
-    // Create temporary file input
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.kml,application/vnd.google-earth.kml+xml';
@@ -90,7 +88,6 @@ export function loadKmlWithFileInput() {
       reject(new Error('File selection cancelled'));
     };
 
-    // Trigger file picker
     input.click();
   });
 }
@@ -119,7 +116,6 @@ function saveToCache(filename, content) {
     console.log(`Cached KML file: ${filename} (${(content.length / 1024).toFixed(1)} KB)`);
   } catch (error) {
     console.warn('Failed to cache KML in LocalStorage:', error);
-    // LocalStorage full or disabled - non-fatal, continue without cache
   }
 }
 
