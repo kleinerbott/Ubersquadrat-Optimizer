@@ -1,11 +1,13 @@
 /**
  * Router Module - BRouter Integration for Bicycle Routing
  *
- * Handles route calculation through proposed squares using BRouter API
- * and TSP optimization.
+ * Handles route calculation through proposed squares using BRouter API,
+ * TSP optimization, and road-aware waypoint selection.
  */
 
 import { solveTSP } from './tsp-solver.js';
+import { fetchRoadsInArea } from './road-fetcher.js';
+import { optimizeWaypoints, calculateCombinedBounds } from './waypoint-optimizer.js';
 
 /**
  * Extract proposed squares from Leaflet layer
@@ -190,7 +192,7 @@ function simplifyWaypoints(waypoints, minDistance = 0.5) {
  * @returns {Promise<Object>} Route data
  */
 export async function calculateRoute(proposedLayer, startPoint, bikeType, roundtrip, apiUrl = 'https://brouter.de/brouter') {
-  // Step 1: Extract proposed square centers
+  // Step 1: Extract proposed squares with bounds
   const squares = extractProposedSquares(proposedLayer);
 
   if (squares.length === 0) {
@@ -199,38 +201,60 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
 
   console.log(`Routing through ${squares.length} proposed squares`);
 
-  // Step 1.5: Check if squares are too spread out
-  if (squares.length > 3) {
-    let maxDistance = 0;
-    for (let i = 0; i < squares.length; i++) {
-      for (let j = i + 1; j < squares.length; j++) {
-        const R = 6371;
-        const dLat = (squares[j].lat - squares[i].lat) * Math.PI / 180;
-        const dLon = (squares[j].lon - squares[i].lon) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(squares[i].lat * Math.PI / 180) * Math.cos(squares[j].lat * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = R * c;
+  // Step 2: Fetch roads for the area (road-aware routing)
+  let optimizedWaypoints;
+  let roadFetchFailed = false;
 
-        if (distance > maxDistance) maxDistance = distance;
+  try {
+    // Calculate bounds for all squares
+    const squareBounds = squares.map(s => ({
+      south: s.bounds.south,
+      north: s.bounds.north,
+      west: s.bounds.west,
+      east: s.bounds.east
+    }));
+    const combinedBounds = calculateCombinedBounds(squareBounds);
+
+    console.log('Fetching roads for bike type:', bikeType);
+    const roads = await fetchRoadsInArea(combinedBounds, bikeType);
+
+    if (roads.length > 0) {
+      // Step 3: Optimize waypoints using road data
+      const optimization = optimizeWaypoints(squareBounds, roads);
+      optimizedWaypoints = optimization.waypoints;
+
+      console.log(`Road-aware optimization: ${optimization.statistics.withRoads}/${optimization.statistics.total} squares have suitable roads`);
+
+      if (optimization.skippedSquares.length > 0) {
+        console.warn(`Warning: ${optimization.skippedSquares.length} squares have no ${bikeType}-suitable roads`);
       }
+    } else {
+      console.warn('No roads found in area, falling back to center points');
+      roadFetchFailed = true;
     }
-
-    console.log(`Maximum distance between any two squares: ${maxDistance.toFixed(2)} km`);
-
-    if (maxDistance > 15) {
-      console.warn(`Squares are very spread out (max ${maxDistance.toFixed(1)} km apart). Consider using directional optimization (N/S/E/W) or edge completion mode for better routing results.`);
-    }
+  } catch (error) {
+    console.warn('Road fetch failed, falling back to center points:', error.message);
+    roadFetchFailed = true;
   }
 
-  // Step 2: Solve TSP to get optimal order
-  const squarePoints = squares.map(s => ({ lat: s.lat, lon: s.lon }));
-  const tspResult = solveTSP(squarePoints, startPoint, roundtrip, true);
+  // Fallback to square centers if road fetch failed
+  if (roadFetchFailed || !optimizedWaypoints) {
+    optimizedWaypoints = squares.map((s, i) => ({
+      lat: s.lat,
+      lon: s.lon,
+      squareIndex: i,
+      hasRoad: false,
+      type: 'center-fallback'
+    }));
+  }
+
+  // Step 4: Solve TSP to get optimal order
+  const waypointCoords = optimizedWaypoints.map(wp => ({ lat: wp.lat, lon: wp.lon }));
+  const tspResult = solveTSP(waypointCoords, startPoint, roundtrip, true);
 
   console.log(`TSP result: ${tspResult.route.length} waypoints, ${tspResult.distance.toFixed(2)} km straight-line distance`);
 
-  // Step 3: Simplify waypoints if too many or too close together
+  // Step 5: Simplify waypoints if too many or too close together
   let finalWaypoints = tspResult.route;
   let simplificationLevel = 0;
 
@@ -240,7 +264,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     console.log(`Waypoints simplified (level 1): ${tspResult.route.length} → ${finalWaypoints.length}`);
   }
 
-  // Step 4: Check waypoint limit
+  // Step 6: Check waypoint limit
   if (finalWaypoints.length > 50) {
     console.warn(`Route has ${finalWaypoints.length} waypoints, BRouter limit is ~60. May fail.`);
   }
@@ -259,7 +283,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     return finalWaypoints;
   };
 
-  // Step 5: Call BRouter API with fallback profiles
+  // Step 7: Call BRouter API with fallback profiles
   const profileFallbacks = {
     'trekking': ['fastbike', 'trekking-ignore-cr', 'trekking-noferries'],
     'gravel': ['trekking', 'fastbike'],
@@ -276,7 +300,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       console.log(`Trying profile: ${profile} (attempt ${profileAttempts}/${profilesToTry.length})`);
       const geojson = await callBRouterAPI(finalWaypoints, profile, apiUrl);
 
-      // Step 6: Parse response
+      // Step 8: Parse response
       const routeData = parseBRouterResponse(geojson);
 
       if (profile !== bikeType) {
@@ -288,7 +312,8 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
         waypoints: finalWaypoints,
         allSquares: tspResult.route, // Keep all squares for reference
         straightLineDistance: tspResult.distance,
-        profileUsed: profile
+        profileUsed: profile,
+        roadAware: !roadFetchFailed
       };
     } catch (error) {
       lastError = error;
@@ -314,7 +339,8 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
             waypoints: finalWaypoints,
             allSquares: tspResult.route,
             straightLineDistance: tspResult.distance,
-            profileUsed: profile
+            profileUsed: profile,
+            roadAware: !roadFetchFailed
           };
         } catch (retryError) {
           console.warn(`Retry with simplified waypoints also failed:`, retryError.message);
@@ -359,7 +385,8 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
         allSquares: tspResult.route,
         straightLineDistance: tspResult.distance,
         profileUsed: bikeType,
-        simplified: true
+        simplified: true,
+        roadAware: !roadFetchFailed
       };
     } catch (minimalError) {
       console.error('Even minimal route failed:', minimalError);
