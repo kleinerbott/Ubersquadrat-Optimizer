@@ -6,7 +6,7 @@ import { calculateRoute } from '../logic/router';
 import { CONFIG } from '../logic/config';
 
 const store = useAppStore();
-const { routing, canCalculateRoute, startPointFormatted, proposedSquares } = storeToRefs(store);
+const { routing, canCalculateRoute, startPointFormatted, proposedSquares, settings } = storeToRefs(store);
 const mapRef = inject('mapRef');
 
 const emit = defineEmits(['route-calculated']);
@@ -69,6 +69,16 @@ async function handleCalculateRoute() {
 
 <template>
   <div>
+    <!-- Orienteering mode info -->
+    <v-alert
+      v-if="settings.optimizationApproach === 'orienteering'"
+      type="info"
+      density="compact"
+      class="mb-3"
+    >
+      Quadrate wurden routing-optimiert ausgewählt
+    </v-alert>
+
     <!-- Bike type selection -->
     <v-select
       v-model="routing.bikeType"

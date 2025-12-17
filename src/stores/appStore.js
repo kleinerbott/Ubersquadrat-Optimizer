@@ -35,10 +35,18 @@ export const useAppStore = defineStore('app', {
 
     // Optimization settings
     settings: {
+      // Strategic mode settings
       numSquares: 5,
       directions: ['N', 'S', 'E', 'W'],
       mode: 'balanced',
-      maxHoleSize: 3
+      maxHoleSize: 3,
+
+      // Optimization approach selector
+      optimizationApproach: 'strategic', // 'strategic' or 'orienteering'
+
+      // Orienteering mode settings
+      maxDistance: 50,      // km (20-100)
+      routingWeight: 1.0    // 0.5-2.0 (route priority)
     }
   }),
 
@@ -83,13 +91,20 @@ export const useAppStore = defineStore('app', {
       this.baseSquare = null;
       this.proposedSquares = [];
       this.grid = { latStep: null, lonStep: null, originLat: null, originLon: null };
+      this.clearStartPoint();
       this.resetRoute();
     },
 
     resetRoute() {
-      this.routing.startPoint = null;
+      // Don't clear startPoint - user may want to keep it for multiple optimizations
+      // Only clear the calculated route
       this.routing.selectingStartPoint = false;
       this.routing.currentRoute = null;
+    },
+
+    clearStartPoint() {
+      this.routing.startPoint = null;
+      this.routing.selectingStartPoint = false;
     },
 
     setStartPoint(lat, lon) {

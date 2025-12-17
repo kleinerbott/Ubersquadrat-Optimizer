@@ -253,6 +253,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
   const tspResult = solveTSP(waypointCoords, startPoint, roundtrip, true);
 
   console.log(`TSP result: ${tspResult.route.length} waypoints, ${tspResult.distance.toFixed(2)} km straight-line distance`);
+  console.log(`Waypoint types in route: ${optimizedWaypoints.filter(wp => wp.type === 'intersection').length} intersections, ${optimizedWaypoints.filter(wp => wp.type === 'midpoint').length} midpoints, ${optimizedWaypoints.filter(wp => wp.type === 'nearest').length} nearest, ${optimizedWaypoints.filter(wp => wp.type === 'center-fallback').length} center-fallback`);
 
   // Step 5: Simplify waypoints if too many or too close together
   let finalWaypoints = tspResult.route;

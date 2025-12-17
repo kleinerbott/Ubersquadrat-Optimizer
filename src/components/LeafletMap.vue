@@ -134,15 +134,19 @@ function showProposedSquares(squares) {
  * Show calculated route on map
  */
 function showRoute(routeData) {
-  // Keep start marker, clear rest
-  const startMarkers = [];
+  // Keep ONLY the start marker (larger radius), clear everything else
+  let startMarker = null;
   layers.route.eachLayer(layer => {
-    if (layer instanceof L.CircleMarker) {
-      startMarkers.push(layer);
+    if (layer instanceof L.CircleMarker && layer.options.radius === CONFIG.START_MARKER_RADIUS) {
+      startMarker = layer;
     }
   });
+
   layers.route.clearLayers();
-  startMarkers.forEach(m => m.addTo(layers.route));
+
+  if (startMarker) {
+    startMarker.addTo(layers.route);
+  }
 
   // Draw route polyline
   const latlngs = routeData.coordinates.map(coord => [coord.lat, coord.lon]);
@@ -153,9 +157,10 @@ function showRoute(routeData) {
   }).addTo(layers.route);
 
   // Add waypoint markers if not too many
+  // These are road-aware waypoints from waypoint-optimizer.js
   if (routeData.waypoints && routeData.waypoints.length < CONFIG.MAX_WAYPOINT_MARKERS) {
     routeData.waypoints.forEach((wp, index) => {
-      if (index === 0) return; // Skip start point
+      if (index === 0) return; // Skip start point (already shown)
 
       L.circleMarker([wp.lat, wp.lon], {
         radius: 3,
@@ -167,6 +172,8 @@ function showRoute(routeData) {
       }).addTo(layers.route);
     });
   }
+
+  console.log(`Map: Displayed route with ${routeData.waypoints?.length || 0} waypoints`);
 }
 
 /**
