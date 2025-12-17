@@ -6,14 +6,14 @@
 export const CONFIG = {
   // Grid Configuration
   SCAN_RADIUS_BUFFER: 20,      // Extra squares beyond ubersquadrat for scanning visited squares
-  GRID_DISPLAY_BUFFER: 10,     // Extra squares to display in grid visualization
+  GRID_DISPLAY_BUFFER: 150,     // Extra squares to display in grid visualization
   GRID_CELL_CENTER_OFFSET: 0.5, // Offset to calculate cell center (0.5 = middle of cell)
 
   // Grid Line Styling
   GRID_LINE_COLOR: '#555555',     // Horizontal grid lines
-  GRID_LINE_OPACITY: 1,
+  GRID_LINE_OPACITY: 0.3,
   GRID_VERTICAL_COLOR: '#888888', // Vertical grid lines (lighter)
-  GRID_VERTICAL_OPACITY: 0.3,
+  GRID_VERTICAL_OPACITY: 0.2,
 
   // Map Feature Colors
   UBERSQUADRAT_COLOR: '#0000ff',
