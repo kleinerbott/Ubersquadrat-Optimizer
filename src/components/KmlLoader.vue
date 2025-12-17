@@ -5,7 +5,7 @@ import { loadKmlFile, loadCachedKml } from '../logic/file-loader';
 import { parseKmlFeatures, findUbersquadrat } from '../logic/kml-processor';
 import { calculateGridParameters, scanAndBuildVisitedSet } from '../logic/grid';
 import L from 'leaflet';
-import omnivore from '@mapbox/leaflet-omnivore';
+import { kml } from '@mapbox/togeojson';
 
 const store = useAppStore();
 const emit = defineEmits(['kml-loaded']);
@@ -13,12 +13,19 @@ const emit = defineEmits(['kml-loaded']);
 const loading = ref(false);
 const error = ref(null);
 
-onMounted(() => {
+onMounted(async () => {
   // Try to load cached KML on startup
   const cached = loadCachedKml();
   if (cached) {
     console.log(`Auto-loading cached KML: ${cached.filename}`);
-    processKmlContent(cached.content, cached.filename);
+    try {
+      await processKmlContent(cached.content, cached.filename);
+    } catch (err) {
+      console.error('Error auto-loading cached KML:', err);
+      error.value = `Cached KML load failed: ${err.message}`;
+      // Reset loading state if stuck
+      store.setLoading(false);
+    }
   }
 });
 
@@ -50,61 +57,54 @@ async function processKmlContent(kmlContent, filename) {
   store.resetState();
 
   try {
-    // Create blob URL for omnivore
-    const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
-    const blobUrl = URL.createObjectURL(blob);
+    // Parse KML string to DOM
+    const parser = new DOMParser();
+    const kmlDom = parser.parseFromString(kmlContent, 'text/xml');
 
-    // Parse KML using omnivore
-    const layer = omnivore.kml(blobUrl);
+    // Check for parsing errors
+    const parserError = kmlDom.querySelector('parsererror');
+    if (parserError) {
+      throw new Error('Invalid KML file format');
+    }
 
-    await new Promise((resolve, reject) => {
-      layer.on('ready', () => {
-        URL.revokeObjectURL(blobUrl);
+    // Convert KML to GeoJSON
+    const geojson = kml(kmlDom);
 
-        try {
-          // Parse KML features
-          const { features, allPolygons, candidates } = parseKmlFeatures(layer);
+    // Create Leaflet layer from GeoJSON
+    const layer = L.geoJSON(geojson);
 
-          // Find ubersquadrat
-          const ubersquadrat = findUbersquadrat(candidates, features);
-          if (!ubersquadrat.coords) {
-            throw new Error('Kein Ubersquadrat gefunden');
-          }
+    // Parse KML features
+    const { features, allPolygons, candidates } = parseKmlFeatures(layer);
 
-          // Calculate grid parameters
-          const gridParams = calculateGridParameters(ubersquadrat.coords, ubersquadrat.size);
+    // Find ubersquadrat
+    const ubersquadrat = findUbersquadrat(candidates, features);
+    if (!ubersquadrat.coords) {
+      throw new Error('Kein Ubersquadrat gefunden');
+    }
 
-          // Build visited set
-          const visitedSet = scanAndBuildVisitedSet(allPolygons, gridParams.baseSquare, gridParams);
+    // Calculate grid parameters
+    const gridParams = calculateGridParameters(ubersquadrat.coords, ubersquadrat.size);
 
-          // Update store
-          store.setGridParameters(gridParams);
-          store.setVisitedSet(visitedSet);
-          store.setKmlFilename(filename);
+    // Build visited set
+    const visitedSet = scanAndBuildVisitedSet(allPolygons, gridParams.baseSquare, gridParams);
 
-          // Emit event for map update (include the layer for visualization)
-          emit('kml-loaded', {
-            gridParams,
-            bounds: gridParams.bounds,
-            kmlLayer: layer
-          });
+    // Update store
+    store.setGridParameters(gridParams);
+    store.setVisitedSet(visitedSet);
+    store.setKmlFilename(filename);
 
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
-
-      layer.on('error', (err) => {
-        URL.revokeObjectURL(blobUrl);
-        reject(new Error(`KML parsing error: ${err.message || 'Unknown error'}`));
-      });
+    // Emit event for map update (include the layer for visualization)
+    emit('kml-loaded', {
+      gridParams,
+      bounds: gridParams.bounds,
+      kmlLayer: layer
     });
 
     console.log('KML loading complete');
   } catch (err) {
     console.error('Error processing KML:', err);
     error.value = err.message;
+    throw err; // Re-throw to be caught by onMounted
   } finally {
     store.setLoading(false);
   }

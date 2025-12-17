@@ -6,11 +6,13 @@
 // Road filters for different bike types
 // Excludes highways, motorways, and bike-inappropriate roads
 const ROAD_FILTERS = {
-  // Road bike - paved roads only, excludes unpaved surfaces
+  // Road bike - paved roads only, very restrictive
   fastbike: {
-    highways: 'primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|cycleway|service',
-    excludeSurfaces: 'gravel|unpaved|dirt|grass|sand|mud|ground|earth|compacted',
-    description: 'Paved roads suitable for road bikes'
+    highways: 'primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|living_street',
+    excludeSurfaces: 'gravel|unpaved|dirt|grass|sand|mud|ground|earth|compacted|fine_gravel|pebblestone|wood|metal|cobblestone',
+    allowedSurfaces: 'paved|asphalt|concrete',
+    excludeHighways: 'track|path|footway|bridleway|steps',
+    description: 'Paved roads only - suitable for road bikes'
   },
 
   // Gravel bike - includes unpaved roads and tracks
@@ -38,7 +40,35 @@ function buildOverpassQuery(bounds, bikeType) {
   const filter = ROAD_FILTERS[bikeType] || ROAD_FILTERS.trekking;
   const bbox = `${bounds.south},${bounds.west},${bounds.north},${bounds.east}`;
 
-  // Build the query with bike-type specific filters
+  // For fastbike, use a more restrictive query with positive surface filter
+  if (bikeType === 'fastbike') {
+    // Query for roads with explicitly paved surfaces OR major roads
+    const query = `
+[out:json][timeout:30];
+(
+  // Roads with paved surfaces
+  way["highway"~"^(${filter.highways})$"]
+     ["surface"~"^(${filter.allowedSurfaces})$"]
+     ["bicycle"!="no"]
+     ["access"!="private"]
+     ["motor_vehicle"!="designated"]
+     (${bbox});
+
+  // Major roads (primary/secondary) without bad surface tags (assumed paved)
+  way["highway"~"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link)$"]
+     ["bicycle"!="no"]
+     ["access"!="private"]
+     ["motor_vehicle"!="designated"]
+     ["surface"!~"^(${filter.excludeSurfaces})$"]
+     ${filter.excludeHighways ? `["highway"!~"^(${filter.excludeHighways})$"]` : ''}
+     (${bbox});
+);
+out body geom;
+`;
+    return query;
+  }
+
+  // Build the query with bike-type specific filters (for gravel/trekking)
   const query = `
 [out:json][timeout:30];
 (
