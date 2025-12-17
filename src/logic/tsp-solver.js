@@ -6,19 +6,7 @@
 import * as turf from '@turf/turf';
 
 /**
- * Calculate distance between two points using Turf.js
- * @param {Object} p1 - Point with {lat, lon}
- * @param {Object} p2 - Point with {lat, lon}
- * @returns {number} Distance in kilometers
- */
-function distance(p1, p2) {
-  const from = turf.point([p1.lon, p1.lat]);
-  const to = turf.point([p2.lon, p2.lat]);
-  return turf.distance(from, to, { units: 'kilometers' });
-}
-
-/**
- * Nearest Neighbor algorithm for TSP
+ * Nearest Neighbor algorithm for TSP using Turf.js nearestPoint
  * Greedy approach: always visit the nearest unvisited point
  * @param {Array} points - Array of {lat, lon} points to visit
  * @param {Object} startPoint - Starting point {lat, lon}
@@ -33,23 +21,21 @@ export function nearestNeighbor(points, startPoint, roundtrip = false) {
 
   const unvisited = [...points];
   const route = [startPoint];
-  let current = startPoint;
+  let current = turf.point([startPoint.lon, startPoint.lat]);
 
   while (unvisited.length > 0) {
-    let nearestIndex = 0;
-    let minDist = distance(current, unvisited[0]);
+    // Create feature collection from unvisited points
+    const pointsFC = turf.featureCollection(
+      unvisited.map((p, idx) => turf.point([p.lon, p.lat], { index: idx }))
+    );
 
-    for (let i = 1; i < unvisited.length; i++) {
-      const dist = distance(current, unvisited[i]);
-      if (dist < minDist) {
-        minDist = dist;
-        nearestIndex = i;
-      }
-    }
+    // Use Turf's nearestPoint to find closest unvisited point
+    const nearest = turf.nearestPoint(current, pointsFC);
+    const nearestIndex = nearest.properties.index;
+    const nearestPoint = unvisited[nearestIndex];
 
-    const nearest = unvisited[nearestIndex];
-    route.push(nearest);
-    current = nearest;
+    route.push(nearestPoint);
+    current = turf.point([nearestPoint.lon, nearestPoint.lat]);
     unvisited.splice(nearestIndex, 1);
   }
 

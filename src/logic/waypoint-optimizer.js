@@ -32,29 +32,18 @@ function squareToPolygon(square) {
 }
 
 /**
- * Get center point of a square
+ * Get center point of a square using Turf.js
  * @param {Object} square
  * @returns {{lat: number, lon: number}}
  */
 function getSquareCenter(square) {
-  let bounds;
-
-  if (Array.isArray(square)) {
-    bounds = {
-      south: square[0][0],
-      west: square[0][1],
-      north: square[1][0],
-      east: square[1][1]
-    };
-  } else if (square.bounds) {
-    bounds = square.bounds;
-  } else {
-    bounds = square;
-  }
+  const polygon = squareToPolygon(square);
+  const center = turf.center(polygon);
+  const coords = center.geometry.coordinates;
 
   return {
-    lat: (bounds.south + bounds.north) / 2,
-    lon: (bounds.west + bounds.east) / 2
+    lat: coords[1],
+    lon: coords[0]
   };
 }
 
@@ -271,35 +260,17 @@ export function optimizeWaypoints(squares, roads) {
 }
 
 /**
- * Calculate bounds that encompass all squares
+ * Calculate bounds that encompass all squares using Turf.js
  * @param {Array} squares - Array of square bounds
  * @returns {Object} Combined bounds
  */
 export function calculateCombinedBounds(squares) {
-  let minLat = Infinity, maxLat = -Infinity;
-  let minLon = Infinity, maxLon = -Infinity;
+  // Convert all squares to polygons and create a FeatureCollection
+  const polygons = squares.map(square => squareToPolygon(square));
+  const featureCollection = turf.featureCollection(polygons);
 
-  for (const square of squares) {
-    let bounds;
-
-    if (Array.isArray(square)) {
-      bounds = {
-        south: square[0][0],
-        west: square[0][1],
-        north: square[1][0],
-        east: square[1][1]
-      };
-    } else if (square.bounds) {
-      bounds = square.bounds;
-    } else {
-      bounds = square;
-    }
-
-    minLat = Math.min(minLat, bounds.south);
-    maxLat = Math.max(maxLat, bounds.north);
-    minLon = Math.min(minLon, bounds.west);
-    maxLon = Math.max(maxLon, bounds.east);
-  }
+  // Use Turf.js to calculate bounding box
+  const [minLon, minLat, maxLon, maxLat] = turf.bbox(featureCollection);
 
   return { minLat, maxLat, minLon, maxLon };
 }

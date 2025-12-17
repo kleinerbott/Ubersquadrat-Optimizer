@@ -5,6 +5,7 @@
  * TSP optimization, and road-aware waypoint selection.
  */
 
+import * as turf from '@turf/turf';
 import { solveTSP } from './tsp-solver.js';
 import { fetchRoadsInArea } from './road-fetcher.js';
 import { optimizeWaypoints, calculateCombinedBounds } from './waypoint-optimizer.js';
@@ -146,6 +147,7 @@ export function parseBRouterResponse(geojson) {
 /**
  * Simplify waypoints by removing intermediate points that are very close together
  * This helps avoid BRouter waypoint limits and coverage issues
+ * Uses Turf.js distance calculation for accuracy
  *
  * @param {Array} waypoints - Array of {lat, lon} waypoints
  * @param {number} minDistance - Minimum distance between waypoints in km (default 0.5 km)
@@ -158,15 +160,10 @@ function simplifyWaypoints(waypoints, minDistance = 0.5) {
   let lastKept = waypoints[0];
 
   for (let i = 1; i < waypoints.length - 1; i++) {
-    // Calculate distance from last kept waypoint
-    const R = 6371; // Earth radius in km
-    const dLat = (waypoints[i].lat - lastKept.lat) * Math.PI / 180;
-    const dLon = (waypoints[i].lon - lastKept.lon) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lastKept.lat * Math.PI / 180) * Math.cos(waypoints[i].lat * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
+    // Use Turf.js for accurate geodesic distance calculation
+    const from = turf.point([lastKept.lon, lastKept.lat]);
+    const to = turf.point([waypoints[i].lon, waypoints[i].lat]);
+    const distance = turf.distance(from, to, { units: 'kilometers' });
 
     // Keep waypoint if far enough from last kept point
     if (distance >= minDistance) {

@@ -72,7 +72,6 @@ export function isPointInPolygonWithHoles(lat, lon, polygon) {
  */
 export function calculateArea(coords) {
   const turfCoords = coords.map(c => [c[1], c[0]]);
-  // Close the ring if needed
   if (turfCoords[0][0] !== turfCoords[turfCoords.length - 1][0] ||
       turfCoords[0][1] !== turfCoords[turfCoords.length - 1][1]) {
     turfCoords.push(turfCoords[0]);
