@@ -3,6 +3,7 @@ import { inject } from 'vue';
 import { useAppStore } from '../stores/appStore';
 import { storeToRefs } from 'pinia';
 import { optimizeSquare } from '../logic/optimizer';
+import performanceLogger from '../logic/performance-logger';
 
 const store = useAppStore();
 const { settings, isReady, baseSquare, visitedSet, grid, kmlLoading, routing } = storeToRefs(store);
@@ -24,7 +25,12 @@ function handleOptimize() {
     return;
   }
 
-  console.time('Timer Quadrate finden (Optimierung)');
+  performanceLogger.time('Quadrate finden (Optimierung)');
+  performanceLogger.setMetadata({
+    numSquares: settings.value.numSquares,
+    mode: settings.value.mode,
+    maxHoleSize: settings.value.maxHoleSize
+  });
 
   const result = optimizeSquare(
     baseSquare.value,
@@ -42,7 +48,7 @@ function handleOptimize() {
   store.setProposedSquares(result);
   emit('optimized', result);
 
-  console.timeEnd('Timer Quadrate finden (Optimierung)');
+  performanceLogger.timeEnd('Quadrate finden (Optimierung)');
 }
 </script>
 

@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/appStore';
 import { storeToRefs } from 'pinia';
 import { calculateRoute } from '../logic/router';
 import { CONFIG } from '../logic/config';
+import performanceLogger from '../logic/performance-logger';
 
 const store = useAppStore();
 const { routing, canCalculateRoute, startPointFormatted, proposedSquares, settings } = storeToRefs(store);
@@ -34,7 +35,13 @@ function toggleSelectingPoint() {
 async function handleCalculateRoute() {
   if (!canCalculateRoute.value) return;
 
-  console.time('Timer Routing');
+  performanceLogger.time('Routing');
+  performanceLogger.setMetadata({
+    bikeType: routing.value.bikeType,
+    roundtrip: routing.value.roundtrip,
+    numSquares: proposedSquares.value?.length || 0
+  });
+
   calculating.value = true;
   error.value = null;
   statusMessage.value = 'Lade Straßendaten...';
@@ -62,7 +69,7 @@ async function handleCalculateRoute() {
     store.setCurrentRoute(routeData);
     emit('route-calculated', routeData);
 
-    console.timeEnd('Timer Routing');
+    performanceLogger.timeEnd('Routing');
     statusMessage.value = null;
 
     // Show warning if squares were skipped due to missing roads
@@ -77,7 +84,7 @@ async function handleCalculateRoute() {
     }
   } catch (err) {
     console.error('Route calculation error:', err);
-    console.timeEnd('Timer Routing');
+    performanceLogger.timeEnd('Routing');
     statusMessage.value = null;
     error.value = err.message;
   } finally {

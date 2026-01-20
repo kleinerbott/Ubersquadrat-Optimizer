@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { generateGPX, generateKML, downloadFile } from '../logic/export';
+import performanceLogger from '../logic/performance-logger';
 import { useAppStore } from '../stores/appStore';
 import { storeToRefs } from 'pinia';
 
@@ -38,6 +39,21 @@ function exportKml() {
     downloadFile(content, 'squadrats-route.kml', 'application/vnd.google-earth.kml+xml');
   } catch (err) {
     console.error('KML export error:', err);
+    error.value = err.message;
+  }
+}
+
+/**
+ * Export performance metrics as JSON file
+ */
+function exportPerformanceMetrics() {
+  try {
+    const jsonData = performanceLogger.exportJSON();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `performance-metrics-${timestamp}.json`;
+    downloadFile(jsonData, filename, 'application/json');
+  } catch (err) {
+    console.error('Performance export error:', err);
     error.value = err.message;
   }
 }
@@ -116,6 +132,19 @@ function openInBikeRouter() {
       @click="openInBikeRouter"
     >
       In BikeRouter bearbeiten
+    </v-btn>
+
+    <v-divider class="my-3" />
+
+    <v-btn
+      block
+      variant="outlined"
+      prepend-icon="mdi-chart-timeline-variant"
+      size="small"
+      color="secondary"
+      @click="exportPerformanceMetrics"
+    >
+      Performance-Metriken exportieren
     </v-btn>
 
     <v-alert

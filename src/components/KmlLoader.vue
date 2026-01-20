@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/appStore';
 import { loadKmlFile, loadCachedKml } from '../logic/file-loader';
 import { parseKmlFeatures, findUbersquadrat } from '../logic/kml-processor';
 import { calculateGridParameters, scanAndBuildVisitedSet } from '../logic/grid';
+import performanceLogger from '../logic/performance-logger';
 import L from 'leaflet';
 import { kml } from '@mapbox/togeojson';
 
@@ -53,7 +54,8 @@ async function handleLoadClick() {
  * Process KML content and update store
  */
 async function processKmlContent(kmlContent, filename) {
-  console.time('Timer KML Laden');
+  performanceLogger.time('KML Laden');
+  performanceLogger.setMetadata({ kmlFilename: filename });
   store.setLoading(true);
   store.resetState();
 
@@ -101,10 +103,10 @@ async function processKmlContent(kmlContent, filename) {
       kmlLayer: layer
     });
 
-    console.timeEnd('Timer KML Laden');
+    performanceLogger.timeEnd('KML Laden');
   } catch (err) {
     console.error('Error processing KML:', err);
-    console.timeEnd('Timer KML Laden');
+    performanceLogger.timeEnd('KML Laden');
     error.value = err.message;
     throw err; // Re-throw to be caught by onMounted
   } finally {

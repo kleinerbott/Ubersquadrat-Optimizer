@@ -12,6 +12,7 @@ import { optimizeWaypoints, optimizeWaypointsWithSequence, calculateCombinedBoun
 import { tryProfilesWithFallback } from './routing-strategies.js';
 import { pointsMatch } from './bounds-utils.js';
 import { callBRouterAPI, parseBRouterResponse } from './brouter-api.js';
+import performanceLogger from './performance-logger.js';
 
 // Re-export BRouter API functions for backward compatibility
 export { callBRouterAPI, parseBRouterResponse };
@@ -138,7 +139,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
 
   try {
     // Group squares by cardinal direction to avoid loading roads in the center (Übersquadrat)
-    console.time('  ↳ Straßen laden (Overpass API)');
+    performanceLogger.time('  ↳ Straßen laden (Overpass API)');
     const squareGroups = groupSquaresByDirection(squares);
 
     // Fetch roads for each direction in parallel
@@ -170,13 +171,13 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     }
     const roads = Array.from(roadMap.values());
 
-    console.timeEnd('  ↳ Straßen laden (Overpass API)');
+    performanceLogger.timeEnd('  ↳ Straßen laden (Overpass API)');
 
     if (roads.length > 0) {
       // ────────────────────────────────────────────────────────────
       // PHASE 1: Find optimal visit order
       // ────────────────────────────────────────────────────────────
-      console.time('  ↳ Phase 1: Besuchsreihenfolge (TSP)');
+      performanceLogger.time('  ↳ Phase 1: Besuchsreihenfolge (TSP)');
 
       // Optimize waypoints WITHOUT sequence (neutral, just find roads)
       const roughOptimization = optimizeWaypoints(squares, roads);
@@ -186,12 +187,12 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       const roughWaypointCoords = roughWaypoints.map(wp => ({ lat: wp.lat, lon: wp.lon }));
       const tspResult = solveTSP(roughWaypointCoords, startPoint, roundtrip);
 
-      console.timeEnd('  ↳ Phase 1: Besuchsreihenfolge (TSP)');
+      performanceLogger.timeEnd('  ↳ Phase 1: Besuchsreihenfolge (TSP)');
 
       // ────────────────────────────────────────────────────────────
       // PHASE 2: Optimize waypoints for this specific order
       // ────────────────────────────────────────────────────────────
-      console.time('  ↳ Phase 2: Wegpunktoptimierung');
+      performanceLogger.time('  ↳ Phase 2: Wegpunktoptimierung');
 
       // Extract squares only from TSP route (remove startPoint)
       let routeSquaresOnly = tspResult.route.filter((waypoint, idx) => {
@@ -222,7 +223,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       const fineOptimization = optimizeWaypointsWithSequence(orderedSquares, roads, startPoint, roundtrip);
       finalWaypoints = fineOptimization.waypoints;
 
-      console.timeEnd('  ↳ Phase 2: Wegpunktoptimierung');
+      performanceLogger.timeEnd('  ↳ Phase 2: Wegpunktoptimierung');
 
     } else {
       console.warn('[Router] No roads found in area - falling back to centers');
@@ -306,9 +307,9 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
   const profilesToTry = [bikeType, ...(profileFallbacks[bikeType] || [])];
 
   // Call BRouter with filtered waypoints
-  console.time('  ↳ BRouter API Aufruf');
+  performanceLogger.time('  ↳ BRouter API Aufruf');
   const result = await tryProfilesWithFallback(profilesToTry, routeWithRoads, apiUrl);
-  console.timeEnd('  ↳ BRouter API Aufruf');
+  performanceLogger.timeEnd('  ↳ BRouter API Aufruf');
 
   if (result.success) {
     const routeData = parseBRouterResponse(result.geojson);
