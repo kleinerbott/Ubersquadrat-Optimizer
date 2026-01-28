@@ -81,7 +81,6 @@ export function solveTSP(points, startPoint, roundtrip = false, optimize = true)
 
 /**
  * 2-opt optimization to improve route by removing crossing paths.
- * Uses full-scan approach: checks all pairs each iteration and applies all improvements.
  *
  * @param {Array} route - Initial route as array of {lat, lon} points
  * @param {number} maxIterations - Maximum optimization iterations
@@ -101,7 +100,6 @@ export function twoOptOptimize(route, maxIterations = 100) {
     improved = false;
     iterations++;
 
-    // Full scan: check ALL pairs each iteration (not just first improvement)
     for (let i = 1; i < n - 2; i++) {
       for (let j = i + 1; j < n - 1; j++) {
         const [a, b, c, d] = [optimizedRoute[i - 1], optimizedRoute[i], optimizedRoute[j], optimizedRoute[j + 1]];

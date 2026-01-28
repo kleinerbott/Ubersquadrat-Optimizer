@@ -32,5 +32,8 @@ export const CONFIG = {
   START_MARKER_RADIUS: 8,
   MAX_ROUTE_WAYPOINTS: 50,
   MAX_WAYPOINT_MARKERS: 33,
-  BROUTER_API_URL: 'https://brouter.de/brouter'
+  BROUTER_API_URL: 'https://brouter.de/brouter',
+
+  // Waypoint Optimization
+  DEBUG_WAYPOINT_CANDIDATES: true  // Set to true to see detailed candidate logging
 };

@@ -1,37 +1,13 @@
-/**
- * Square Optimizer
- *
- * 5-phase strategic optimization algorithm that recommends which new squares
- * to visit next to efficiently expand the covered area.
- *
- * Phase 1: Edge Analysis - Analyze N/S/E/W edge completion percentages
- * Phase 2: Hole Detection - Find contiguous unvisited regions
- * Phase 3: Candidate Collection - Find all unvisited squares within search radius
- * Phase 4: Strategic Scoring - Multi-factor scoring (layer, holes, edges, adjacency)
- * Phase 5: Greedy Selection - Select best squares minimizing travel distance
- */
-
 import { CONFIG } from "./config";
 
-// ===== CONSTANTS =====
 
-/**
- * Mode-specific scoring multipliers
- * - edge: Prioritize edge expansion
- * - holes: Prioritize filling gaps
- * - balanced: Equal weight to both
- */
 const MODE_MULTIPLIERS = {
   edge: { edge: 3, hole: 0.3, layerPenalty: 1.0 },
   holes: { edge: 0.3, hole: 3, layerPenalty: 0.5 },
   balanced: { edge: 1, hole: 1, layerPenalty: 1.0 }
 };
 
-// ===== UTILITY FUNCTIONS =====
 
-/**
- * Convert grid coordinates (i,j) to rectangle bounds [lat,lon]
- */
 function rectFromIJ(i, j, originLat, originLon, LAT_STEP, LON_STEP) {
   const s = originLat + i * LAT_STEP;
   const w = originLon + j * LON_STEP;
@@ -64,16 +40,12 @@ function getSearchBounds(base, radius = CONFIG.SCAN_RADIUS_RANGE) {
   };
 }
 
-/**
- * Get keys of 4 neighboring squares (N, S, E, W)
- */
+
 function getNeighborKeys(i, j) {
   return [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].map(([ni, nj]) => `${ni},${nj}`);
 }
 
-/**
- * Check if square is on the immediate border (Layer 0) of Übersquadrat
- */
+
 function isOnUbersquadratBorder(i, j, base) {
   return (
     (i === base.maxI + 1 && j >= base.minJ - 1 && j <= base.maxJ + 1) ||
@@ -117,10 +89,6 @@ function analyzeEdge(name, fixedCoord, start, end, type, visitedSet) {
   };
 }
 
-/**
- * Analyze all 4 edges of the Übersquadrat
- * Returns {N, S, E, W} edge analysis objects
- */
 function analyzeEdges(base, visitedSet) {
   const edges = {
     N: analyzeEdge('N', base.maxI + 1, base.minJ, base.maxJ, 'row', visitedSet),
@@ -132,7 +100,6 @@ function analyzeEdges(base, visitedSet) {
   return edges;
 }
 
-// ===== HOLE DETECTION =====
 
 /**
  * Flood-fill algorithm to find contiguous unvisited regions
@@ -161,7 +128,6 @@ function findContiguousRegion(startI, startJ, visited, isInBounds, visitedSet) {
     region.push({ i, j, key });
     visited.add(key);
 
-    // Check 4 neighbors
     const neighborKeys = getNeighborKeys(i, j);
     const neighbors = [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]];
 
@@ -276,19 +242,18 @@ export function optimizeSquare(
   optimizationMode = 'balanced',
   maxHoleSize = 5
 ) {
-  // === PHASE 1: EDGE ANALYSIS ===
+  //  PHASE 1: EDGE ANALYSIS 
   const edges = analyzeEdges(base, visitedSet);
 
-  // === PHASE 2: HOLE DETECTION ===
+  //  PHASE 2: HOLE DETECTION 
   const holes = detectHoles(base, visitedSet, maxHoleSize);
   const squareToHoleMap = buildHoleMap(holes);
 
-  // === PHASE 3: FIND ALL PERIMETER SQUARES ===
+  //  PHASE 3: FIND ALL PERIMETER SQUARES 
   function findPerimeterSquares() {
     const candidates = new Map();
     const bounds = getSearchBounds(base, 5);
 
-    // Check each square in the search area
     for (let i = bounds.minI; i <= bounds.maxI; i++) {
       for (let j = bounds.minJ; j <= bounds.maxJ; j++) {
         const key = `${i},${j}`;
@@ -318,11 +283,10 @@ export function optimizeSquare(
   const allCandidates = findPerimeterSquares();
   const unvisited = allCandidates.filter(c => !visitedSet.has(`${c.i},${c.j}`));
 
-  // === PHASE 4: STRATEGIC SCORING ===
+  //  PHASE 4: STRATEGIC SCORING 
   const scored = unvisited.map(square => {
     let score = 100;
 
-    // Initialize score breakdown
     const scoreBreakdown = {
       base: 100,
       layerScore: 0,
@@ -331,12 +295,10 @@ export function optimizeSquare(
       adjacencyBonus: 0
     };
 
-    // === LAYER DISTANCE (Primary factor) ===
     const isBorder = isOnUbersquadratBorder(square.i, square.j, base);
     const layerDistance = isBorder ? 0 : calculateLayerDistance(square.i, square.j, base).total;
 
     // Strongly prioritize proximity with bonuses AND penalties
-    // (layerPenalty will be applied below after mode is known)
     if (layerDistance === 0) scoreBreakdown.layerScore = 10000;
     else if (layerDistance === 1) scoreBreakdown.layerScore = 5000;
     else if (layerDistance === 2) scoreBreakdown.layerScore = 2000;
@@ -348,7 +310,7 @@ export function optimizeSquare(
     const maxEdgeCompletion = ['N', 'S', 'E', 'W']
       .filter(dir => square.edge.includes(dir))
       .reduce((max, dir) => Math.max(max, edges[dir].completion), 0);
-    let edgeBonusRaw = Math.floor(maxEdgeCompletion * 30);  // max 3,000 raw
+    let edgeBonusRaw = Math.floor(maxEdgeCompletion * 30);  // max 3,000 no bonus
 
     // === HOLE FILLING MODE ===
     const squareKey = `${square.i},${square.j}`;
@@ -367,21 +329,20 @@ export function optimizeSquare(
         sq => !visitedSet.has(sq.key) && sq.key !== squareKey
       ).length;
       if (unvisitedInHole === 0) {
-        holeCompletionBonus = 1500;  // Will be mode-affected below
+        holeCompletionBonus = 1500;  
       }
     }
 
-    // === MODE MULTIPLIERS ===
+    //  MODE MULTIPLIERS 
     const mult = MODE_MULTIPLIERS[optimizationMode] || MODE_MULTIPLIERS.balanced;
 
     // Apply layer penalty reduction in holes mode (negative scores only)
-    if (scoreBreakdown.layerScore < 0 && mult.layerPenalty !== undefined) {
-      scoreBreakdown.layerScore = Math.floor(scoreBreakdown.layerScore * mult.layerPenalty);
-    }
+  if (mult.layerPenalty !== undefined && mult.layerPenalty !== 1.0) { 
+    scoreBreakdown.layerScore = Math.floor(scoreBreakdown.layerScore   * mult.layerPenalty);
+ }
     score += scoreBreakdown.layerScore;
 
     scoreBreakdown.edgeBonus = Math.floor(edgeBonusRaw * mult.edge);
-    // Include hole completion bonus in mode multiplication
     scoreBreakdown.holeBonus = Math.floor((holeSizeBonusRaw + holeCompletionBonus) * mult.hole);
 
     score += scoreBreakdown.edgeBonus + scoreBreakdown.holeBonus;
@@ -408,19 +369,16 @@ export function optimizeSquare(
     return { ...square, score, scoreBreakdown, layerDistance, hole };
   });
 
-  // === PHASE 5: SELECT TOP N BY SCORE ===
-  // TSP in router.js handles route optimization, so we just select by score
+  //  PHASE 5: SELECT TOP N BY SCORE 
   if (scored.length === 0) {
     return { rectangles: [], metadata: [] };
   }
 
-  // Sort by score descending and take top N
   scored.sort((a, b) => b.score - a.score);
   const selected = scored.slice(0, targetNew);
 
   const rectangles = selected.map(s => rectFromIJ(s.i, s.j, originLat, originLon, LAT_STEP, LON_STEP));
 
-  // Create metadata for each selected square
   const metadata = selected.map((s, index) => ({
     bounds: rectangles[index],
     gridCoords: { i: s.i, j: s.j },

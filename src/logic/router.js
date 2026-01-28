@@ -147,20 +147,15 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       }).then(result => ({ ...result, group, groupBounds }));
     });
 
-    // Execute all fetches in parallel
-    console.log(`[Router] Fetching ${squareGroups.length} groups in parallel across ${primaryInstances.length} instances`);
     const results = await Promise.all(fetchPromises);
 
-    // Check for failures and retry on fallback instance
     const failedGroups = results.filter(r => !r.success);
     if (failedGroups.length > 0 && fallbackInstance) {
-      console.log(`[Router] ${failedGroups.length} group(s) failed, retrying on fallback instance...`);
 
       if (onProgress) {
         onProgress(`${failedGroups.length} fehlgeschlagen, versuche Backup-Server...`);
       }
 
-      // Retry failed groups on fallback instance (sequentially to avoid overloading)
       for (const failed of failedGroups) {
         const retryResult = await fetchRoadsFromInstance(
           failed.groupBounds,
@@ -170,16 +165,14 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
           (msg) => { if (onProgress) onProgress(`Backup ${failed.group.direction}: ${msg}`); }
         );
 
-        // Update the result in place
         const idx = results.findIndex(r => r.group === failed.group);
         if (idx !== -1 && retryResult.success) {
           results[idx] = { ...retryResult, group: failed.group, groupBounds: failed.groupBounds };
-          console.log(`[Router] Fallback succeeded for ${failed.group.direction}`);
         }
       }
     }
 
-    // Merge and deduplicate roads by ID
+    // Merge roads by ID
     const roadMap = new Map();
     for (const result of results) {
       for (const road of (result.roads || [])) {
@@ -194,7 +187,6 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     const roads = Array.from(roadMap.values());
 
     const successCount = results.filter(r => r.success).length;
-    console.log(`[Router] Parallel fetch complete: ${successCount}/${squareGroups.length} succeeded, ${roads.length} roads total`);
     console.timeEnd('  ↳ Straßen laden (Overpass API)');
 
     if (roads.length > 0) {
@@ -211,7 +203,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       const roughOptimization = optimizeWaypoints(squares, roads);
       const roughWaypoints = roughOptimization.waypoints;
 
-      // Solve TSP with these rough waypoints to get FINAL visit order
+      // Solve TSP with these rough waypoints to get initial visit order
       const roughWaypointCoords = roughWaypoints.map(wp => ({ lat: wp.lat, lon: wp.lon }));
       const tspResult = solveTSP(roughWaypointCoords, startPoint, roundtrip);
 
@@ -225,7 +217,6 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
         onProgress('Optimiere Wegpunkte auf Straßen...');
       }
 
-      // Extract squares only from TSP route (remove startPoint)
       let routeSquaresOnly = tspResult.route.filter((waypoint, idx) => {
         if (idx === 0) return false;
         if (roundtrip && idx === tspResult.route.length - 1) return false;
