@@ -24,7 +24,7 @@ const formattedTime = computed(() => {
         <span class="text-body-2 font-weight-bold">{{ route.distance.toFixed(1) }} km</span>
       </div>
       <div class="d-flex justify-space-between align-center mb-1">
-        <span class="text-caption">Hohengewinn</span>
+        <span class="text-caption">Höhengewinn</span>
         <span class="text-body-2 font-weight-bold">
           <v-icon size="small" color="success">mdi-arrow-up</v-icon>
           {{ route.elevationGain }} m

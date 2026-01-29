@@ -73,12 +73,12 @@ defineExpose({
       <!-- Header -->
       <v-list-item class="sidebar-header">
         <v-list-item-title class="text-h6">
-          Ubersquadrat-Optimizer
+          Übersquadrat-Optimizer
         </v-list-item-title>
         <v-list-item-subtitle v-if="kmlFilename">
           {{ kmlFilename }}
           <span v-if="ubersquadratSize" class="text-caption">
-            (Ubersquadrat: {{ ubersquadratSize }})
+            (Übersquadrat: {{ ubersquadratSize }})
           </span>
         </v-list-item-subtitle>
       </v-list-item>

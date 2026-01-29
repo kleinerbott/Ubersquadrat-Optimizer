@@ -114,12 +114,12 @@ async function handleCalculateRoute() {
       class="mt-3"
       @click="toggleSelectingPoint"
     >
-      {{ routing.selectingStartPoint ? 'Abbrechen' : 'Startpunkt wahlen' }}
+      {{ routing.selectingStartPoint ? 'Abbrechen' : 'Startpunkt wählen' }}
     </v-btn>
 
     <!-- Start point status -->
     <div class="text-caption mt-1" :class="startPointFormatted ? 'text-success' : 'text-grey'">
-      {{ startPointFormatted ? `Startpunkt: ${startPointFormatted}` : 'Kein Startpunkt gewahlt' }}
+      {{ startPointFormatted ? `Startpunkt: ${startPointFormatted}` : 'Kein Startpunkt gewählt' }}
     </div>
 
     <!-- Calculate route button -->

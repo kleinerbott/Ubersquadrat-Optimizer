@@ -13,7 +13,7 @@ const emit = defineEmits(['optimized']);
 const optimizationModes = [
   { title: 'Ausgewogen', value: 'balanced' },
   { title: 'Kantenabschluss', value: 'edge' },
-  { title: 'Locher fullen', value: 'holes' }
+  { title: 'Löcher füllen', value: 'holes' }
 ];
 
 function handleOptimize() {
