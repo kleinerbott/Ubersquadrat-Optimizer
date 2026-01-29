@@ -9,7 +9,7 @@ Eine webbasierte Anwendung zur Optimierung geografischer Erkundungstouren. Die A
 - **Fahrrad-Routing**: Integration mit BRouter für realistische Fahrradrouten
 - **Road-Aware Waypoints**: Wegpunkte werden automatisch auf tatsächlichen Straßen platziert
 - **TSP-Optimierung**: Nearest Neighbor + 2-Opt Algorithmus für optimale Besuchsreihenfolge
-- **GPX/KML Export**: Exportieren Sie Ihre Routen für GPS-Geräte und Google Earth
+- **GPX/KML Export**: Exportieren Sie Ihre Routen für GPS-Geräte
 - **Responsive Design**: Funktioniert auf Desktop und mobilen Geräten
 
 ## Voraussetzungen
@@ -111,8 +111,8 @@ Die blaue Linie zeigt die optimierte Fahrradroute.
 
 ### 4. Route exportieren
 
-- **GPX-Export**: Für Garmin, Wahoo, Komoot, etc.
-- **KML-Export**: Für Google Earth
+- **GPX/KML-Export**: Für Garmin, Wahoo, Komoot, etc.
+
 
 ## Lizenz
 
